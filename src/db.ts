@@ -1,0 +1,132 @@
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+import logger from './logger.js';
+import { getCurrentBranch } from './git.js';
+
+const BASE_DB_FILENAME = '.repo-prep';
+const dbLogger = logger.child({ module: 'db' });
+
+export interface DBFile {
+    path: string;
+    mtime: number;
+    last_scanned_at: number;
+}
+
+export interface DBExport {
+    id?: number;
+    file_path: string;
+    name: string;
+    kind: string;
+    signature?: string; // detailed
+    doc?: string;       // detailed
+    start_line: number;
+    end_line: number;
+}
+
+export interface DBImport {
+    id?: number;
+    file_path: string;
+    module_specifier: string;
+    imported_symbols: string;
+    resolved_path?: string;
+}
+
+export function initDB(repoPath: string): any {
+    const branch = getCurrentBranch(repoPath);
+    const dbFilename = branch ? `${BASE_DB_FILENAME}.${branch}.db` : `${BASE_DB_FILENAME}.db`;
+    const dbPath = path.join(repoPath, dbFilename);
+
+    dbLogger.info({ repoPath, dbFilename, branch }, 'Initializing database...');
+    const db = new Database(dbPath);
+
+    // Wal mode for better concurrency
+    db.pragma('journal_mode = WAL');
+
+    // Schema
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS files (
+            path TEXT PRIMARY KEY,
+            mtime REAL,
+            last_scanned_at REAL,
+            classification TEXT,
+            summary TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS exports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT,
+            name TEXT,
+            kind TEXT,
+            signature TEXT,
+            doc TEXT,
+            start_line INTEGER,
+            end_line INTEGER,
+            classification TEXT,
+            capabilities TEXT, -- JSON string
+            FOREIGN KEY(file_path) REFERENCES files(path) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT,
+            module_specifier TEXT,
+            imported_symbols TEXT,
+            resolved_path TEXT,
+            FOREIGN KEY(file_path) REFERENCES files(path) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT,
+            key TEXT,
+            value TEXT,
+            kind TEXT, -- e.g. "Env", "Port", "Image"
+            FOREIGN KEY(file_path) REFERENCES files(path) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_exports_file_path ON exports(file_path);
+        CREATE INDEX IF NOT EXISTS idx_exports_name ON exports(name);
+        CREATE INDEX IF NOT EXISTS idx_imports_file_path ON imports(file_path);
+        CREATE INDEX IF NOT EXISTS idx_imports_resolved_path ON imports(resolved_path);
+        CREATE INDEX IF NOT EXISTS idx_configs_file_path ON configs(file_path);
+
+        -- FTS5 Search (External Content)
+        CREATE VIRTUAL TABLE IF NOT EXISTS exports_fts USING fts5(
+            name, 
+            signature, 
+            doc, 
+            content='exports', 
+            content_rowid='id'
+        );
+
+        -- Triggers to keep FTS in sync
+        CREATE TRIGGER IF NOT EXISTS exports_ai AFTER INSERT ON exports BEGIN
+            INSERT INTO exports_fts(rowid, name, signature, doc) VALUES (new.id, new.name, new.signature, new.doc);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS exports_ad AFTER DELETE ON exports BEGIN
+            INSERT INTO exports_fts(exports_fts, rowid, name, signature, doc) VALUES('delete', old.id, old.name, old.signature, old.doc);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS exports_au AFTER UPDATE ON exports BEGIN
+            INSERT INTO exports_fts(exports_fts, rowid, name, signature, doc) VALUES('delete', old.id, old.name, old.signature, old.doc);
+            INSERT INTO exports_fts(rowid, name, signature, doc) VALUES (new.id, new.name, new.signature, new.doc);
+        END;
+    `);
+
+    return db;
+}
+
+export function getDB(repoPath: string): any {
+    const branch = getCurrentBranch(repoPath);
+    const dbFilename = branch ? `${BASE_DB_FILENAME}.${branch}.db` : `${BASE_DB_FILENAME}.db`;
+    const dbPath = path.join(repoPath, dbFilename);
+
+    if (!fs.existsSync(dbPath)) {
+        return initDB(repoPath);
+    }
+    const db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    return db;
+}

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",                   // modern JS output
+    "module": "NodeNext",                 // ESM modules
+    "moduleResolution": "NodeNext",       // Node ESM resolution
+    "verbatimModuleSyntax": false,        // avoid TS1287 / TS1295
+    "esModuleInterop": true,              // allow default imports from CJS
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,                       // strict type checking
+    "noImplicitAny": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "baseUrl": "src",
+  "paths": {
+    "@/*": ["*"]
+  }
+}
