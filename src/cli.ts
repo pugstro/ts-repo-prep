@@ -24,7 +24,7 @@ program
       console.time('Indexing');
       await ensureCacheUpToDate(repoPath);
       console.timeEnd('Indexing');
-      console.log('✅ Repository indexed. The SQLite database (.repo-prep.db) is ready for MCP.');
+      console.log('✅ Repository indexed. The SQLite database is ready for MCP.');
       return;
     }
 

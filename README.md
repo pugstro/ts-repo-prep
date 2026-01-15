@@ -11,6 +11,7 @@ A TypeScript repository analyzer and indexer that creates a queryable SQLite dat
 - **MCP Server integration** with 12 powerful tools for AI assistants
 - **Incremental caching** (only re-parses changed files)
 - **Capability detection** (network, database, filesystem, browser storage)
+- **Git branch awareness** (maintains separate indexes for different branches)
 
 ### MCP Server Mode
 
@@ -54,7 +55,7 @@ The server provides 2 read-only resources:
 
 ## Database Schema
 
-Creates a `.repo-prep.db` SQLite database with:
+Creates a `.repo-prep.db` SQLite database (or `.repo-prep.[branch].db` when in a git repository) with:
 
 - **files** - File metadata, mtime, classification, summary
 - **exports** - Exported symbols with signatures, docs, line numbers, capabilities
