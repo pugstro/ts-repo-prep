@@ -33,7 +33,12 @@ export async function ensureCacheUpToDate(repoPath: string, concurrency = 5): Pr
         return db; // Nothing to do
     }
 
-    logger.info({ toDelete: toDelete.length, toProcess: toProcess.length }, 'Syncing Database...');
+    const isInitialIndex = cachedFiles.length === 0;
+    if (isInitialIndex) {
+        logger.info({ totalFiles: onDiskFiles.length }, '🚀 Starting initial repository indexing...');
+    } else {
+        logger.info({ toDelete: toDelete.length, toProcess: toProcess.length }, '🔄 Syncing repository updates...');
+    }
 
     // 1. Delete removed files
     const deleteParams = toDelete.map(p => p); // simpler than trying to batch too smartly

@@ -1,6 +1,6 @@
-# ts-repo-prep
+# mcp-repo-intelligence
 
-A TypeScript repository analyzer and indexer that creates a queryable SQLite database of your codebase, optimized for AI-assisted development through the Model Context Protocol (MCP).
+An AI-powered repository intelligence server that creates a queryable SQLite database of your codebase, optimized for AI-assisted development through the Model Context Protocol (MCP).
 
 ## Features
 
@@ -8,7 +8,7 @@ A TypeScript repository analyzer and indexer that creates a queryable SQLite dat
 - **Bidirectional dependency tracking** (find imports and dependents)
 - **Smart import resolution** (tsconfig path aliases, monorepos, ESM/CJS)
 - **Infrastructure parsing** (Prisma schemas, GraphQL, Docker, YAML)
-- **MCP Server integration** with 12 powerful tools for AI assistants
+- **MCP Server integration** with 13 powerful tools for AI assistants
 - **Incremental caching** (only re-parses changed files)
 - **Capability detection** (network, database, filesystem, browser storage)
 - **Git branch awareness** (maintains separate indexes for different branches)
@@ -18,7 +18,7 @@ A TypeScript repository analyzer and indexer that creates a queryable SQLite dat
 Start the MCP server for AI assistant integration:
 
 ```bash
-ts-repo-prep-mcp
+mcp-repo-intelligence
 ```
 
 Or during development:
@@ -29,22 +29,40 @@ npm run mcp
 
 ## MCP Tools
 
-The MCP server exposes 12 tools for AI assistants:
+The MCP server exposes 13 tools (all prefixed with `repointel_` for easy discovery):
 
 ### Core Tools
 
-1. **get_project_summary** - Get hierarchical project structure with adaptive detail levels
-2. **summarize_file** - Get detailed info about a specific file
-3. **search_symbols** - Fuzzy search for functions, classes, types by name
-4. **get_file_dependencies** - List what a file imports
-5. **get_file_dependents** - Find who imports a file (reverse lookup)
-6. **get_symbol_definition** - Extract full source code for a symbol
-7. **get_infrastructure_metadata** - Query Docker, YAML, env configs
-8. **search_by_capability** - Find symbols by side-effects (network, database, etc.)
-9. **refresh_index** - Manually trigger re-indexing
-10. **get_symbols_batch** - Retrieve multiple symbol definitions in one call
-11. **get_symbol_context** - Get comprehensive context for a symbol
-12. **analyze_change_impact** - Analyze what depends on a symbol
+| Tool | Description |
+|------|-------------|
+| `repointel_setup_repository` | **FIRST tool to call** - indexes the repo and returns stats |
+| `repointel_get_project_summary` | Hierarchical project structure with adaptive detail |
+| `repointel_summarize_file` | Detailed info about a specific file |
+| `repointel_refresh_index` | Trigger re-indexing after changes |
+
+### Search Tools
+
+| Tool | Description |
+|------|-------------|
+| `repointel_search_symbols` | Fuzzy search for functions, classes, types |
+| `repointel_search_by_capability` | Find by side-effects (network, database, etc.) |
+| `repointel_get_infrastructure_metadata` | Query Docker, YAML, env configs |
+
+### Dependency Tools
+
+| Tool | Description |
+|------|-------------|
+| `repointel_get_file_dependencies` | List what a file imports |
+| `repointel_get_file_dependents` | Find who imports a file |
+| `repointel_analyze_change_impact` | Analyze refactoring "blast radius" |
+
+### Symbol Tools
+
+| Tool | Description |
+|------|-------------|
+| `repointel_get_symbol_definition` | Extract full source code for a symbol |
+| `repointel_get_symbols_batch` | Retrieve multiple symbols in one call |
+| `repointel_get_symbol_context` | Get definition + usages + dependencies |
 
 ## MCP Resources
 
@@ -64,14 +82,15 @@ Creates a `.repo-prep.db` SQLite database (or `.repo-prep.[branch].db` when in a
 
 All with strategic indexes for fast queries.
 
-## Architecture
+## CLI Usage
 
-- **Scanner** - File discovery with gitignore support
-- **Parser** - SWC-based AST extraction
-- **Resolver** - Import path resolution with tsconfig support
-- **Database** - SQLite storage with WAL mode
-- **Exporter** - JSON output generation
-- **MCP Server** - Model Context Protocol implementation
+```bash
+# Index a repository
+repo-intelligence /path/to/repo
+
+# Export to JSON (optional)
+repo-intelligence /path/to/repo -o export.json
+```
 
 ## Performance
 

@@ -16,12 +16,39 @@ export function getClassification(
   kind: string,
   content: string
 ): string {
-  if (fileName.includes('components/') || fileName.endsWith('.tsx')) return 'Component';
-  if (fileName.startsWith('use') || name.startsWith('use')) return 'Hook';
-  if (fileName.includes('models/') || name.endsWith('Model')) return 'Model';
-  if (fileName.includes('services/') || name.endsWith('Service') || name.endsWith('Controller')) {
+  const lowerFileName = fileName.toLowerCase();
+  const lowerName = name.toLowerCase();
+
+  if (lowerFileName.includes('components/') || lowerFileName.endsWith('.tsx')) return 'Component';
+  if (lowerFileName.startsWith('use') || lowerName.startsWith('use')) return 'Hook';
+  if (lowerFileName.includes('models/') || lowerName.endsWith('model')) return 'Model';
+
+  if (
+    lowerFileName.includes('services/') ||
+    lowerFileName.includes('controllers/') ||
+    lowerFileName.includes('handlers/') ||
+    lowerFileName.includes('mcp/') ||
+    lowerFileName.endsWith('service.ts') ||
+    lowerFileName.endsWith('controller.ts') ||
+    lowerFileName.endsWith('handler.ts') ||
+    lowerName.endsWith('service') ||
+    lowerName.endsWith('controller') ||
+    lowerName.endsWith('handler')
+  ) {
     return 'Service';
   }
+
+  if (
+    lowerFileName.includes('repositories/') ||
+    lowerFileName.includes('repos/') ||
+    lowerFileName.endsWith('repository.ts') ||
+    lowerFileName.endsWith('repo.ts') ||
+    lowerName.endsWith('repository') ||
+    lowerName.endsWith('repo')
+  ) {
+    return 'Repository';
+  }
+
   if (kind === 'TsInterfaceDeclaration' || kind === 'TsTypeAliasDeclaration') {
     return 'Type Definition';
   }
@@ -35,16 +62,35 @@ export function getClassification(
  */
 export function getCapabilities(content: string): string[] {
   const caps: string[] = [];
-  if (/fetch|axios|http|https/i.test(content)) {
+  // Network: check for fetch call, axios, or http/https library imports/usage
+  // Avoid matching 'http' in URLs within strings/comments if possible (hard with regex, but we can be stricter)
+  if (/\b(fetch|axios|superagent|got)\s*\(|import\s+.*\b(http|https|node-fetch)\b/i.test(content)) {
     caps.push('Network');
   }
-  if (/db|query|repository|Transaction|knex|prisma|typeorm/i.test(content)) {
+
+  // Database: check mostly for ORMs or SQL patterns
+  // Removed "repository" and simple "db" as they are common variable names in non-DB contexts
+  if (/\b(knex|prisma|typeorm|mongoose|sequelize|pg|mysql|sqlite3)\b/i.test(content)) {
+    caps.push('Database');
+  } else if (/\b(SELECT\s+.*FROM|INSERT\s+INTO|UPDATE\s+.*SET|DELETE\s+FROM)\b/i.test(content)) {
+    // Basic SQL detection
+    caps.push('Database');
+  } else if (/\.query\s*\(|\.execute\s*\(/i.test(content) && /db|database|client|pool/i.test(content)) {
+    // Heuristic: .query() or .execute() call on a variable named likely as a DB handler
     caps.push('Database');
   }
-  if (/fs\.|path\.|readFileSync|writeFile/i.test(content)) {
+
+  // File System
+  if (/\bfs\./i.test(content) || /\b(readFileSync|writeFileSync|readFile|writeFile|readdir)\b/.test(content)) {
+    caps.push('File System');
+  } else if (/import\s+.*\bfs\b/.test(content)) {
     caps.push('File System');
   }
-  if (/localStorage|sessionStorage|Cookies/i.test(content)) {
+
+  // Browser Storage
+  if (/\b(localStorage|sessionStorage|indexedDB)\./.test(content)) {
+    caps.push('Browser Storage');
+  } else if (/\bdocument\.cookie\b/.test(content)) {
     caps.push('Browser Storage');
   }
   return caps;

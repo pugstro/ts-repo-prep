@@ -4,11 +4,24 @@
 
 export const TOOL_SCHEMAS = [
   {
-    name: 'get_project_summary',
+    name: 'repointel_setup_repository',
+    description: 'The FIRST tool you should call for any new repository. ' +
+      'It performs initial indexing, verifies the environment, and returns repository statistics ' +
+      'along with a high-level file tree. Use this to "onboard" yourself to a codebase.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        repoPath: { type: 'string', description: 'Absolute path to the repository' },
+      },
+      required: ['repoPath'],
+    },
+  },
+  {
+    name: 'repointel_get_project_summary',
     description: 'Get a hierarchical summary of the project. \n' +
       'STRATEGY: Adaptive. By default, tries to return the full tree with export signatures. ' +
       'If the project is too large for the context window, it automatically truncates details (hides signatures) but ALWAYS returns the full file/folder structure. ' +
-      'Use this to get the "Map" of the codebase.',
+      'Use this to get the "Map" of the codebase. CALL setup_repository FIRST if you haven\'t yet.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -19,7 +32,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'summarize_file',
+    name: 'repointel_summarize_file',
     description: 'Get a summary of a specific file. Defaults to showing exported signatures. Use "detailed" for full code/docs.',
     inputSchema: {
       type: 'object' as const,
@@ -35,8 +48,8 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'search_symbols',
-    description: 'Search for symbols (functions, classes) globally by name. Best for jumping to a known component (e.g. "AuthController") without traversing the tree.',
+    name: 'repointel_search_symbols',
+    description: 'Search for symbols (functions, classes) globally by name. Best for jumping to a known component (e.g. "AuthController") without traversing the tree. CALL repointel_setup_repository FIRST for best accuracy.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -47,7 +60,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'get_file_dependencies',
+    name: 'repointel_get_file_dependencies',
     description: 'Get a list of files that the target file imports.',
     inputSchema: {
       type: 'object' as const,
@@ -59,7 +72,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'get_file_dependents',
+    name: 'repointel_get_file_dependents',
     description: 'Get a list of files that import the target file.',
     inputSchema: {
       type: 'object' as const,
@@ -71,7 +84,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'get_symbol_definition',
+    name: 'repointel_get_symbol_definition',
     description: 'Get the full source code implementation of a specific exported symbol. ' +
       'Use this when you need to understand how a function, class, or constant is implemented.',
     inputSchema: {
@@ -85,7 +98,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'get_infrastructure_metadata',
+    name: 'repointel_get_infrastructure_metadata',
     description: 'Query infrastructure and configuration metadata (from Dockerfiles, YAML, or .env files). ' +
       'Use this to see base images, ports, environment variables, or service definitions.',
     inputSchema: {
@@ -98,7 +111,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'search_by_capability',
+    name: 'repointel_search_by_capability',
     description: 'Find symbols that have specific high-level capabilities (side-effects). ' +
       'Valid capabilities: Network, Database, File System, Browser Storage.',
     inputSchema: {
@@ -111,9 +124,9 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'get_symbols_batch',
+    name: 'repointel_get_symbols_batch',
     description: 'Get full source code for multiple symbols in one call. ' +
-      'Much more efficient than making repeated get_symbol_definition calls when you need to retrieve several related symbols. ' +
+      'Much more efficient than making repeated repointel_get_symbol_definition calls when you need to retrieve several related symbols. ' +
       'Saves round-trips and context window space.',
     inputSchema: {
       type: 'object' as const,
@@ -136,9 +149,9 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'get_symbol_context',
+    name: 'repointel_get_symbol_context',
     description: 'Get comprehensive context for a symbol: its definition, usage examples from files that import it, and its direct dependencies. ' +
-      'This is much more efficient than calling get_symbol_definition + get_file_dependents + parsing usage sites separately. ' +
+      'This is much more efficient than calling repointel_get_symbol_definition + repointel_get_file_dependents + parsing usage sites separately. ' +
       'Use this when you need to understand how a symbol is used in practice.',
     inputSchema: {
       type: 'object' as const,
@@ -153,7 +166,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'refresh_index',
+    name: 'repointel_refresh_index',
     description: 'Manually trigger an incremental re-index of the repository. ' +
       'Use this after making significant file changes to ensure the AI context is up-to-date.',
     inputSchema: {
@@ -165,7 +178,7 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'analyze_change_impact',
+    name: 'repointel_analyze_change_impact',
     description: 'Analyze what would be affected by changing a symbol. Returns a dependency tree showing direct and transitive dependents. Use this before refactoring to understand the "blast radius" of a change.',
     inputSchema: {
       type: 'object' as const,

@@ -9,7 +9,7 @@ import { DetailLevel } from './types.js';
 const program = new Command();
 
 program
-  .name('ts-repo-prep')
+  .name('repo-intelligence')
   .description('Index a TypeScript repository for AI context (SQLite backed)')
   .argument('[dir]', 'Directory to process', '.')
   .option('-o, --output <file>', 'Export the repository structure to a JSON file (optional)')

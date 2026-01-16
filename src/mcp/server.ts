@@ -18,7 +18,7 @@ import { handleToolCall } from './handlers/index.js';
 
 const server = new Server(
   {
-    name: 'ts-repo-prep',
+    name: 'mcp-repo-intelligence',
     version: '1.1.0',
   },
   {

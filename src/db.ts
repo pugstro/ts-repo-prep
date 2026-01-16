@@ -118,15 +118,51 @@ export function initDB(repoPath: string): any {
     return db;
 }
 
+const dbCache = new Map<string, any>();
+
 export function getDB(repoPath: string): any {
     const branch = getCurrentBranch(repoPath);
     const dbFilename = branch ? `${BASE_DB_FILENAME}.${branch}.db` : `${BASE_DB_FILENAME}.db`;
     const dbPath = path.join(repoPath, dbFilename);
 
-    if (!fs.existsSync(dbPath)) {
-        return initDB(repoPath);
+    if (dbCache.has(dbPath)) {
+        const db = dbCache.get(dbPath);
+        if (db.open) {
+            return db;
+        }
+        dbCache.delete(dbPath);
     }
-    const db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
+
+    let db;
+    if (!fs.existsSync(dbPath)) {
+        db = initDB(repoPath);
+    } else {
+        db = new Database(dbPath);
+        db.pragma('journal_mode = WAL');
+    }
+
+    dbCache.set(dbPath, db);
     return db;
 }
+
+export function closeAllDBs() {
+    for (const [path, db] of dbCache.entries()) {
+        try {
+            if (db.open) {
+                dbLogger.info({ path }, 'Closing database connection');
+                db.close();
+            }
+        } catch (err) {
+            dbLogger.error({ path, err }, 'Error closing database execution');
+        }
+    }
+    dbCache.clear();
+}
+
+// Ensure connections are closed on exit
+process.on('exit', () => closeAllDBs());
+process.on('SIGINT', () => {
+    closeAllDBs();
+    process.exit(0);
+});
+
