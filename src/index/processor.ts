@@ -5,7 +5,7 @@ import { getDB, DBFile } from '../db.js';
 import { buildTree } from './tree.js';
 import { ensureCacheUpToDate } from './cache.js';
 
-export async function processRepo(repoPath: string, concurrency = 5, level: DetailLevel = 'detailed', subPath?: string) {
+export async function processRepo(repoPath: string, concurrency = 5, level: DetailLevel = 'detailed', subPath?: string, maxDepth?: number) {
     logger.info({ repo: repoPath, level, subPath }, 'Ensuring cache is up-to-date...');
 
     // Ensure DB is consistent
@@ -31,7 +31,7 @@ export async function processRepo(repoPath: string, concurrency = 5, level: Deta
             path: f.path,
             mtime: f.mtime
         }));
-        return buildTree(summaries, repoPath, level);
+        return buildTree(summaries, repoPath, level, maxDepth);
     }
 
     const summaries: FileSummary[] = files.map(f => {
@@ -62,5 +62,5 @@ export async function processRepo(repoPath: string, concurrency = 5, level: Deta
     });
 
     logger.info({ count: summaries.length }, 'Building hierarchical project tree...');
-    return buildTree(summaries, repoPath, level);
+    return buildTree(summaries, repoPath, level, maxDepth);
 }

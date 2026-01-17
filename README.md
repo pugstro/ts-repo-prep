@@ -13,6 +13,14 @@ An AI-powered repository intelligence server that creates a queryable SQLite dat
 - **Capability detection** (network, database, filesystem, browser storage)
 - **Git branch awareness** (maintains separate indexes for different branches)
 
+### Intelligent Setup (v1.2.0)
+
+Automatically analyzes your repository structure to provide the most efficient context:
+
+- **Smart Classification**: Detects if your repo is Small, Medium, Large, or a Polyglot Monorepo.
+- **System Map**: Generates an architectural map of top-level components (e.g., `Active (TS/JS Source)`, `Detected (Non-TS Backend)`).
+- **Token Optimization**: Prevents AI from wasting tokens on non-code directories (config, assets, other languages) while still providing structural awareness.
+
 ### MCP Server Mode
 
 Start the MCP server for AI assistant integration:
@@ -33,36 +41,36 @@ The MCP server exposes 13 tools (all prefixed with `repointel_` for easy discove
 
 ### Core Tools
 
-| Tool | Description |
-|------|-------------|
-| `repointel_setup_repository` | **FIRST tool to call** - indexes the repo and returns stats |
-| `repointel_get_project_summary` | Hierarchical project structure with adaptive detail |
-| `repointel_summarize_file` | Detailed info about a specific file |
-| `repointel_refresh_index` | Trigger re-indexing after changes |
+| Tool                              | Description                                                       |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `repointel_setup_repository`    | **FIRST tool to call** - indexes the repo and returns stats |
+| `repointel_get_project_summary` | Hierarchical project structure with adaptive detail               |
+| `repointel_summarize_file`      | Detailed info about a specific file                               |
+| `repointel_refresh_index`       | Trigger re-indexing after changes                                 |
 
 ### Search Tools
 
-| Tool | Description |
-|------|-------------|
-| `repointel_search_symbols` | Fuzzy search for functions, classes, types |
-| `repointel_search_by_capability` | Find by side-effects (network, database, etc.) |
-| `repointel_get_infrastructure_metadata` | Query Docker, YAML, env configs |
+| Tool                                      | Description                                    |
+| ----------------------------------------- | ---------------------------------------------- |
+| `repointel_search_symbols`              | Fuzzy search for functions, classes, types     |
+| `repointel_search_by_capability`        | Find by side-effects (network, database, etc.) |
+| `repointel_get_infrastructure_metadata` | Query Docker, YAML, env configs                |
 
 ### Dependency Tools
 
-| Tool | Description |
-|------|-------------|
-| `repointel_get_file_dependencies` | List what a file imports |
-| `repointel_get_file_dependents` | Find who imports a file |
+| Tool                                | Description                        |
+| ----------------------------------- | ---------------------------------- |
+| `repointel_get_file_dependencies` | List what a file imports           |
+| `repointel_get_file_dependents`   | Find who imports a file            |
 | `repointel_analyze_change_impact` | Analyze refactoring "blast radius" |
 
 ### Symbol Tools
 
-| Tool | Description |
-|------|-------------|
-| `repointel_get_symbol_definition` | Extract full source code for a symbol |
-| `repointel_get_symbols_batch` | Retrieve multiple symbols in one call |
-| `repointel_get_symbol_context` | Get definition + usages + dependencies |
+| Tool                                | Description                            |
+| ----------------------------------- | -------------------------------------- |
+| `repointel_get_symbol_definition` | Extract full source code for a symbol  |
+| `repointel_get_symbols_batch`     | Retrieve multiple symbols in one call  |
+| `repointel_get_symbol_context`    | Get definition + usages + dependencies |
 
 ## MCP Resources
 

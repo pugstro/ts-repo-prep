@@ -26,7 +26,8 @@ export const TOOL_SCHEMAS = [
       type: 'object' as const,
       properties: {
         repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        subPath: { type: 'string', description: 'Optional sub-path to focus on (relative to repoPath)' }
+        subPath: { type: 'string', description: 'Optional sub-path to focus on (relative to repoPath)' },
+        maxDepth: { type: 'number', description: 'Maximum tree depth to return (default: unlimited). Use 1 for top-level only.' }
       },
       required: ['repoPath'],
     },

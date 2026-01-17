@@ -7,9 +7,10 @@ import path from 'path';
 export async function handleGetProjectSummary(args: any) {
     const { repoPath } = resolveToolArgs(args);
     const subPath = args?.subPath ? String(args.subPath) : undefined;
+    const maxDepth = args?.maxDepth ? Number(args.maxDepth) : undefined;
 
     // 1. Try to get calculation detail (signatures) first
-    let summary = await processRepo(repoPath, 5, 'signatures', subPath);
+    let summary = await processRepo(repoPath, 5, 'signatures', subPath, maxDepth);
     let json = JSON.stringify(summary, null, 2);
 
     // 2. Adaptive Safety Check
@@ -18,12 +19,12 @@ export async function handleGetProjectSummary(args: any) {
 
     if (json.length > CHAR_LIMIT) {
         // Too big! Downgrade to 'structure' (names only)
-        summary = await processRepo(repoPath, 5, 'structure', subPath);
+        summary = await processRepo(repoPath, 5, 'structure', subPath, maxDepth);
         json = JSON.stringify(summary, null, 2);
 
         if (json.length > CHAR_LIMIT) {
             // STILL too big! Downgrade to 'lite' (files only)
-            summary = await processRepo(repoPath, 5, 'lite', subPath);
+            summary = await processRepo(repoPath, 5, 'lite', subPath, maxDepth);
             json = JSON.stringify(summary, null, 2);
 
             if (json.length > CHAR_LIMIT) {

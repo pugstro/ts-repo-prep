@@ -1,12 +1,12 @@
 {
-  "name": "ts-repo-prep",
-  "version": "1.1.0",
-  "description": "Token-efficient, multi-level private repo preparer for AI summarization",
+  "name": "mcp-repo-intelligence",
+  "version": "1.2.0",
+  "description": "AI-powered repository intelligence server for code analysis via Model Context Protocol",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "ts-repo-prep": "./dist/cli.js",
-    "ts-repo-prep-mcp": "./dist/mcp/server.js"
+    "repo-intelligence": "./dist/cli.js",
+    "mcp-repo-intelligence": "./dist/mcp/server.js"
   },
   "exports": {
     ".": "./dist/index.js",
