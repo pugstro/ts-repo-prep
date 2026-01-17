@@ -17,7 +17,8 @@ export async function scanRepo(root: string) {
     '**/*.prisma',
     '**/*.{graphql,gql}',
     '**/Dockerfile*',
-    '**/.env.example'
+    '**/.env.example',
+    '**/package.json'
   ];
   const entries = await fg(patterns, {
     cwd: root,

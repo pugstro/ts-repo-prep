@@ -36,6 +36,9 @@ export function parseConfigFile(filePath: string): ParseResult {
     } else if (fileName === '.env.example') {
         classification = 'Configuration (Env Template)';
         parseEnvExample(content, configs);
+    } else if (fileName === 'package.json') {
+        classification = 'Project Manifest';
+        parsePackageJson(content, configs);
     }
 
     return { configs, classification };
@@ -165,5 +168,35 @@ function parseGraphQL(content: string, filePath: string): ConfigParseResult {
         });
     }
 
+
+
     return { classification, configs };
+}
+
+function parsePackageJson(content: string, configs: ConfigEntry[]) {
+    try {
+        const pkg = JSON.parse(content);
+        if (pkg.name) {
+            configs.push({ key: 'name', value: pkg.name, kind: 'Service' }); // Treat package name as Service identity
+        }
+
+        // Architecture detection: Workspaces
+        if (pkg.workspaces) {
+            const workspaces = Array.isArray(pkg.workspaces) ? pkg.workspaces.join(', ') : JSON.stringify(pkg.workspaces);
+            configs.push({ key: 'workspaces', value: workspaces, kind: 'Env' }); // Storing as Env/Meta
+        }
+
+        // Execution scripts
+        if (pkg.scripts) {
+            const important = ['start', 'dev', 'build', 'test', 'docker'];
+            for (const script of Object.keys(pkg.scripts)) {
+                // Keep it brief, only major lifecycle hooks
+                if (important.some(i => script.includes(i))) {
+                    configs.push({ key: `script:${script}`, value: pkg.scripts[script], kind: 'Env' });
+                }
+            }
+        }
+    } catch (e) {
+        // Ignore JSON parse errors
+    }
 }

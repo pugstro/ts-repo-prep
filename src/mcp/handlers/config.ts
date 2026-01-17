@@ -12,7 +12,7 @@ interface ConfigMatch {
     context: string;
 }
 
-export async function handleSearchConfig(args: any): Promise<any> {
+export async function handleConfigSearch(args: any): Promise<any> {
     const { repoPath } = resolveToolArgs(args);
     const key = String(args?.key || '');
     const kind = args?.kind ? String(args.kind) : undefined;

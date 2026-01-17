@@ -58,6 +58,29 @@ export async function handleReadSymbol(args: any) {
     const results = db.prepare(sql).all(...queryArgs) as any[];
 
     if (results.length === 0) {
+        // Fallback: Check if it might be a method of a class (fuzzy match on content)
+        const potentialParents = db.prepare(`
+            SELECT name, kind, file_path 
+            FROM exports 
+            WHERE kind IN ('ClassDeclaration', 'ClassExpression', 'TsInterfaceDeclaration')
+            AND id IN (
+                SELECT rowid FROM content_fts WHERE content MATCH ?
+            )
+            LIMIT 3
+        `).all(symbolName);
+
+        if (potentialParents.length > 0) {
+            const suggestions = potentialParents.map((p: any) => `\`${p.name}\` (in ${path.relative(repoPath, p.file_path)})`).join(', ');
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Symbol "${symbolName}" not found as a top-level export.\n` +
+                        `However, it likely exists inside: ${suggestions}.\n` +
+                        `Try: read_symbol({ symbolName: "${(potentialParents[0] as any).name}", context: "full" }) to see the class body.`
+                }],
+            };
+        }
+
         return {
             content: [{
                 type: 'text',
@@ -67,6 +90,30 @@ export async function handleReadSymbol(args: any) {
     }
 
     const result = results[0];
+
+    // --- De-Barrelling Auto-Resolution ---
+    // If the found symbol is just a re-export (e.g. export { Foo } from './foo'),
+    // we should traverse to the original file to give the user the ACTUAL code.
+    if (result.kind === 'ExportSpecifier' || result.kind === 'ExportAllDeclaration') {
+        const importSource = db.prepare(`
+            SELECT resolved_path 
+            FROM imports 
+            WHERE file_path = ? 
+            AND (imported_symbols LIKE ? OR imported_symbols = '*')
+        `).get(result.file_path, `%${symbolName}%`) as any;
+
+        if (importSource && importSource.resolved_path) {
+            // Recursively redirect the search to the definition file
+            // Max recursion is naturally limited by the tool call being one-shot here, 
+            // but we are effectively chaining the query.
+            return handleReadSymbol({
+                ...args,
+                filePath: importSource.resolved_path,
+                // keep same symbolName
+            });
+        }
+    }
+    // -------------------------------------
 
     // Read source file
     const sourceCode = fs.readFileSync(result.file_path, 'utf8');

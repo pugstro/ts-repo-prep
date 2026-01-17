@@ -2,6 +2,7 @@ import { ensureCacheUpToDate, processRepo } from '../../index.js';
 import { resolveToolArgs } from '../utils.js';
 import { getDB } from '../../db.js';
 import logger from '../../logger.js';
+import path from 'path';
 
 export async function handleSetupRepository(args: any) {
     const { repoPath } = resolveToolArgs(args);
@@ -119,6 +120,38 @@ export async function handleSetupRepository(args: any) {
         systemMap.unshift(`| \`docker-compose.yml\` | 🐳 Orchestration | (Services defined) |`);
     }
 
+    // 4. Architecture & Identity Detection
+    const configs = db.prepare('SELECT key, value, kind, file_path FROM configs').all();
+    const rootPackageJson = path.join(repoPath, 'package.json');
+
+    // -- Identity --
+    const rootNameConfig = configs.find((c: any) => c.key === 'name' && c.kind === 'Service' && c.file_path === rootPackageJson);
+    const projectName = rootNameConfig?.value || path.basename(repoPath);
+
+    // -- Architecture --
+    // Workspaces are usually defined in root
+    const workspaces = configs.find((c: any) => c.key === 'workspaces' && c.kind === 'Env' && c.file_path === rootPackageJson);
+    const dockerServices = configs.filter((c: any) => c.kind === 'Service' && !c.file_path.endsWith('package.json')); // Exclude package names
+
+    let architecture = "Standalone";
+    let archDetails = "";
+
+    if (workspaces) {
+        architecture = "Monorepo (Workspaces)";
+        archDetails = `Workspaces: ${workspaces.value}`;
+    } else if (dockerServices.length > 1) {
+        architecture = "Microservices (Docker)";
+        archDetails = `Services: ${dockerServices.map((s: any) => s.value).join(', ')}`;
+    } else if (activeComponents.length > 1 && !workspaces) {
+        // Implicit split
+        architecture = "Multi-Module";
+    }
+
+    // -- Quick Start --
+    // Strict root package.json scripts only
+    const rootScripts = configs.filter((c: any) => c.kind === 'Env' && c.key.startsWith('script:') && c.file_path === rootPackageJson);
+    const runInstructions = rootScripts.map((s: any) => `\`npm run ${s.key.replace('script:', '')}\``).join(', ') || "No root scripts found";
+
     if (fileCount < 100) {
         sizeClass = 'small';
         strategy = 'You can safely use `get_project_summary` to view the full tree.';
@@ -140,19 +173,21 @@ export async function handleSetupRepository(args: any) {
         }
     }
 
-    // 4. Get high-level summary (lite level with depth=1 for top-level only)
+    // 5. Get high-level summary (lite level with depth=1 for top-level only)
     const summary = await processRepo(repoPath, 5, 'lite', undefined, 1);
 
     const welcomeMessage = `
-# Repository Indexed: ${repoPath}
+# Repository Indexed: ${projectName}
 
 ## Overview
 | Metric | Count |
 |--------|-------|
 | Files | ${fileCount} |
 | Symbols | ${exportCount} |
-| Dependencies | ${importCount} |
-| **Size Class** | **${sizeClass.toUpperCase()}**${typeHint} |
+| **Architecture** | **${architecture}** |
+| Run w/ | ${runInstructions} |
+
+${archDetails ? `> ${archDetails}\n` : ''}
 
 ## Recommended Strategy
 ${strategy}
@@ -165,10 +200,10 @@ ${systemMap.join('\n')}
 ## Quick Reference
 | Goal | Tool | Example |
 |------|------|---------|
-| Find a function/class | \`search_symbols\` | \`search_symbols({ query: "AuthController" })\` |
-| Explore a directory | \`get_project_summary\` | \`get_project_summary({ subPath: "src/services/" })\` |
-| Understand a symbol | \`get_symbol_context\` | \`get_symbol_context({ symbolName: "calculatePrice" })\` |
-| Check what imports a file | \`get_file_dependents\` | \`get_file_dependents({ filePath: "..." })\` |
+| Find a function/class | \`repointel_search\` | \`repointel_search({ query: "AuthController", mode: "symbol" })\` |
+| Explore a directory | \`repointel_get_project_summary\` | \`repointel_get_project_summary({ subPath: "src/services/" })\` |
+| Read a symbol | \`repointel_read_symbol\` | \`repointel_read_symbol({ symbolName: "calculatePrice" })\` |
+| Check dependents | \`repointel_inspect_file_deps\` | \`repointel_inspect_file_deps({ filePath: "...", direction: "imported_by" })\` |
 
 ## Top-Level Structure
 `;

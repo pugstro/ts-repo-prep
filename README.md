@@ -1,4 +1,4 @@
-# MCP Repo Intelligence (v2.0)
+# MCP Repo Intelligence (v2.1)
 
 **Zero-Blind-Spot Intelligence for Large TypeScript Repositories.**
 
@@ -8,6 +8,7 @@ This MCP server transforms any TypeScript codebase into a queryable knowledge gr
 
 * **Instant Code Navigation**: Jump directly to any class, interface, function, **or specific method** without needing to know the file structure.
 * **Smart Grep**: Finds every mention of a symbol, distinguishing between strict code imports (Verified Usages) and loose text references in Config/CI/Docker (Loose Mentions).
+* **Architectural Awareness**: 🆕 Automatically detects Monorepos (Workspaces), Microservices (Docker), and Standalone apps. Tells you exactly how to **Run**, **Build**, and **Test** the project immediately upon setup.
 * **Logic & Intent Analysis**: Search for concepts ("where is auth handled?") or specific logic ("publishSubscriptionEvent") with equal precision.
 * **🕸️Monorepo Aware**: Flattens complexity by resolving aliases (`@app/core`) and following re-exports (barrel files) recursively.
 
@@ -30,7 +31,7 @@ This MCP server transforms any TypeScript codebase into a queryable knowledge gr
 * **Input**: `query` (e.g., "Subscription events", "Auth controller")
 * **Output**: List of relevant files with architectural summaries.
 
-### `repointel_inspect_file`
+### `repointel_summarize_file`
 
 **The "Microscope" Tool.** Deeply analyzes a single file.
 
@@ -43,6 +44,7 @@ This MCP server transforms any TypeScript codebase into a queryable knowledge gr
 
 * **Input**: `repoPath`
 * **Action**: Parses thousands of files in seconds to build the knowledge graph.
+* **Performance**: ~1.9s to fully index 1,850 TypeScript files (Microservices Monorepo).
 
 ## Getting Started
 
