@@ -118,7 +118,27 @@ export async function handleReadSymbol(args: any) {
     // Read source file
     const sourceCode = fs.readFileSync(result.file_path, 'utf8');
     const lines = sourceCode.split('\n');
-    const symbolSource = lines.slice(result.start_line - 1, result.end_line).join('\n');
+
+    // Calculate symbol size and truncate if needed for definition mode
+    const sourceLineCount = result.end_line - result.start_line + 1;
+    const MAX_LINES_DEFINITION = 150;
+
+    let symbolSource: string;
+    let truncated = false;
+
+    if (context === 'definition' && sourceLineCount > MAX_LINES_DEFINITION) {
+        // For large symbols, show first MAX_LINES with continuation message
+        const previewLines = lines.slice(result.start_line - 1, result.start_line - 1 + MAX_LINES_DEFINITION);
+        symbolSource = previewLines.join('\n') +
+            `\n\n... [Truncated ${sourceLineCount - MAX_LINES_DEFINITION} more lines] ...\n` +
+            `\nℹ️  Symbol has ${sourceLineCount} total lines. To see the full implementation:\n` +
+            `   • Use Read tool: Read({ file_path: "${result.file_path}", offset: ${result.start_line}, limit: ${sourceLineCount} })\n` +
+            `   • Or use context="full" to see with dependencies and usage examples`;
+        truncated = true;
+    } else {
+        // Normal case: include full source
+        symbolSource = lines.slice(result.start_line - 1, result.end_line).join('\n');
+    }
 
     // Construct Definition Data
     // Use Hierarchical Name if applicable
@@ -132,6 +152,8 @@ export async function handleReadSymbol(args: any) {
         file: path.relative(repoPath, result.file_path),
         startLine: result.start_line,
         endLine: result.end_line,
+        totalLines: sourceLineCount,
+        ...(truncated && { truncated: true, previewLines: MAX_LINES_DEFINITION }),
         doc: result.doc || undefined,
         classification: result.classification,
         capabilities: JSON.parse(result.capabilities || '[]'),
@@ -246,11 +268,12 @@ export async function handleReadSymbol(args: any) {
             SELECT file_path, snippet(content_fts, 1, '>>', '<<', '...', 10) as highlight
             FROM content_fts
             WHERE content_fts MATCH ?
-            LIMIT 15
+            LIMIT 8
         `).all(symbolName) as any[];
 
         looseMentions = ftsResults
             .filter(r => !processedPaths.has(r.file_path) && r.file_path !== result.file_path)
+            .slice(0, 5) // Limit to top 5 most relevant mentions
             .map(r => {
                 const fileMeta = db.prepare('SELECT classification FROM files WHERE path = ?').get(r.file_path) as any;
                 return {

@@ -3,7 +3,7 @@ import { handleSearch } from './search.js';
 import { handleInspectFileDeps, handleAnalyzeChangeImpact } from './dependencies.js';
 import { handleReadSymbol } from './symbols.js';
 import { handleSetupRepository } from './setup.js';
-import { handleSearchConfig } from './config.js';
+import { handleConfigSearch } from './config.js';
 import { createHandler } from './wrapper.js';
 
 // Define the handler registry
@@ -18,7 +18,7 @@ const handlers = new Map<string, (args: any) => Promise<any>>([
   ['repointel_search', createHandler('repointel_search', handleSearch)],
 
   // Unified Config
-  ['repointel_search_config', createHandler('repointel_search_config', handleSearchConfig)],
+  ['repointel_search_config', createHandler('repointel_search_config', handleConfigSearch)],
 
   // Unified Dependencies
   ['repointel_inspect_file_deps', createHandler('repointel_inspect_file_deps', handleInspectFileDeps)],

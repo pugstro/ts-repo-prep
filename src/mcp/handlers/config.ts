@@ -16,6 +16,7 @@ export async function handleConfigSearch(args: any): Promise<any> {
     const { repoPath } = resolveToolArgs(args);
     const key = String(args?.key || '');
     const kind = args?.kind ? String(args.kind) : undefined;
+    const limit = args?.limit ? Number(args.limit) : 50; // Default limit: 50 results
 
     if (!key && !kind) {
         return {
@@ -167,13 +168,22 @@ export async function handleConfigSearch(args: any): Promise<any> {
         params.push(kind);
     }
 
+    query += ' LIMIT ?';
+    params.push(limit);
+
     const results = db.prepare(query).all(...params) as any[];
     const formatted = results.map((r: any) => ({
         ...r,
         file: path.relative(repoPath, r.file_path)
     }));
 
+    // Add helpful message if results were limited
+    let resultText = JSON.stringify(formatted, null, 2);
+    if (results.length === limit) {
+        resultText = `Results limited to ${limit} entries. Use the 'limit' parameter to see more.\n\n` + resultText;
+    }
+
     return {
-        content: [{ type: 'text', text: JSON.stringify(formatted, null, 2) }],
+        content: [{ type: 'text', text: resultText }],
     };
 }

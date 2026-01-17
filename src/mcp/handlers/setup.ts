@@ -1,4 +1,4 @@
-import { ensureCacheUpToDate, processRepo } from '../../index.js';
+import { ensureCacheUpToDate } from '../../index.js';
 import { resolveToolArgs } from '../utils.js';
 import { getDB } from '../../db.js';
 import logger from '../../logger.js';
@@ -131,7 +131,25 @@ export async function handleSetupRepository(args: any) {
     // -- Architecture --
     // Workspaces are usually defined in root
     const workspaces = configs.find((c: any) => c.key === 'workspaces' && c.kind === 'Env' && c.file_path === rootPackageJson);
-    const dockerServices = configs.filter((c: any) => c.kind === 'Service' && !c.file_path.endsWith('package.json')); // Exclude package names
+
+    // Filter out common CI/CD config keys that pollute the services list
+    const CI_CD_KEYS = new Set([
+        'extends', 'stage', 'image', 'variables', 'before_script', 'script', 'only', 'cache', 'artifacts',
+        'when', 'except', 'needs', 'rules', 'name', 'labels', 'annotations', 'metadata', 'spec', 'status',
+        'kind', 'selector', 'template', 'ports', 'enabled', 'repository', 'tag', 'create', 'type', 'port',
+        'hosts', 'tls', 'replicas', 'namespace', 'acme', 'domains', 'cdn', 'uid', 'group', 'names', 'scope',
+        'subresources', 'validation', 'versions', 'command', 'args', 'resources', 'service', 'limits', 'requests',
+        'strategy', 'schedule', 'containers', 'code', 'multiline', 'placeholder', 'columns', 'limit', 'source',
+        'sources', 'edition', 'live', 'bucket', 'subfolder'
+    ]);
+
+    const dockerServices = configs
+        .filter((c: any) => c.kind === 'Service' && !c.file_path.endsWith('package.json'))
+        .filter((c: any) => {
+            const value = String(c.value || '').toLowerCase();
+            // Exclude CI/CD noise, UUIDs, single chars
+            return value.length > 2 && !CI_CD_KEYS.has(value) && !/^[0-9a-f]{8}-/.test(value);
+        });
 
     let architecture = "Standalone";
     let archDetails = "";
@@ -141,7 +159,10 @@ export async function handleSetupRepository(args: any) {
         archDetails = `Workspaces: ${workspaces.value}`;
     } else if (dockerServices.length > 1) {
         architecture = "Microservices (Docker)";
-        archDetails = `Services: ${dockerServices.map((s: any) => s.value).join(', ')}`;
+        const totalServices = dockerServices.length;
+        const serviceNames = dockerServices.map((s: any) => s.value).slice(0, 10);
+        const more = totalServices > 10 ? ` (+${totalServices - 10} more)` : '';
+        archDetails = `${totalServices} services: ${serviceNames.join(', ')}${more}`;
     } else if (activeComponents.length > 1 && !workspaces) {
         // Implicit split
         architecture = "Multi-Module";
@@ -173,9 +194,6 @@ export async function handleSetupRepository(args: any) {
         }
     }
 
-    // 5. Get high-level summary (lite level with depth=1 for top-level only)
-    const summary = await processRepo(repoPath, 5, 'lite', undefined, 1);
-
     const welcomeMessage = `
 # Repository Indexed: ${projectName}
 
@@ -205,14 +223,15 @@ ${systemMap.join('\n')}
 | Read a symbol | \`repointel_read_symbol\` | \`repointel_read_symbol({ symbolName: "calculatePrice" })\` |
 | Check dependents | \`repointel_inspect_file_deps\` | \`repointel_inspect_file_deps({ filePath: "...", direction: "imported_by" })\` |
 
-## Top-Level Structure
+---
+✅ **Repository indexed successfully.** Use the tools above to explore the codebase.
 `;
 
     return {
         content: [
             {
                 type: 'text',
-                text: welcomeMessage + JSON.stringify(summary, null, 2)
+                text: welcomeMessage
             }
         ],
     };
