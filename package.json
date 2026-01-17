@@ -1,6 +1,6 @@
 {
   "name": "mcp-repo-intelligence",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "AI-powered repository intelligence server for code analysis via Model Context Protocol",
   "type": "module",
   "main": "dist/index.js",

@@ -4,30 +4,58 @@ import { resolveToolArgs } from '../utils.js';
 import path from 'path';
 import fs from 'fs';
 
-export async function handleGetSymbolDefinition(args: any) {
+export async function handleReadSymbol(args: any) {
     const { repoPath, filePath } = resolveToolArgs(args);
     const symbolName = String(args?.symbolName);
+    const context = (args?.context || 'definition') as 'definition' | 'full';
 
     await ensureCacheUpToDate(repoPath);
     const db = getDB(repoPath);
 
-    // Find the symbol - order by kind to prefer actual implementations over re-exports
-    let query = `
-        SELECT e.name, e.kind, e.start_line, e.end_line, e.signature, e.doc, f.path as file_path, e.classification, e.capabilities
+    // 1. Find the symbol
+    // We search for:
+    // A) Exact name match (Top level or Member)
+    // B) "Parent.Member" match (if query contains dot)
+    // Ranking: Top-level > Member (unless dot usage)
+
+    let queryArgs: any[] = [];
+    let sql = `
+        SELECT e.name, e.kind, e.start_line, e.end_line, e.signature, e.doc, 
+               f.path as file_path, e.classification, e.capabilities,
+               p.name as parent_name, p.kind as parent_kind
         FROM exports e
         JOIN files f ON e.file_path = f.path
-        WHERE e.name = ?
+        LEFT JOIN exports p ON e.parent_id = p.id
+        WHERE 
     `;
-    const params: any[] = [symbolName];
+
+    if (symbolName.includes('.')) {
+        // Dot syntax: "CMPubSub.publishSubscriptionEvent"
+        const [parent, member] = symbolName.split('.');
+        sql += `(p.name = ? AND e.name = ?)`;
+        queryArgs.push(parent, member);
+    } else {
+        // Standard syntax: "publishSubscriptionEvent" or "CMPubSub"
+        sql += `(e.name = ?)`;
+        queryArgs.push(symbolName);
+    }
 
     if (filePath) {
-        query += ' AND f.path = ?';
-        params.push(filePath);
+        sql += ' AND f.path = ?';
+        queryArgs.push(filePath);
     }
-    // Order to prefer implementations over re-exports
-    query += ' ORDER BY CASE WHEN e.kind = \'ExportSpecifier\' THEN 1 ELSE 0 END, (e.end_line - e.start_line) DESC LIMIT 10';
 
-    const results = db.prepare(query).all(...params) as any[];
+    // Ranking Logic:
+    // 1. Top-Level Exports (parent_id IS NULL)
+    // 2. Members (parent_id IS NOT NULL)
+    sql += `
+        ORDER BY 
+        CASE WHEN e.parent_id IS NULL THEN 0 ELSE 1 END,
+        CASE WHEN e.kind = 'ExportSpecifier' THEN 2 ELSE 0 END
+        LIMIT 10
+    `;
+
+    const results = db.prepare(sql).all(...queryArgs) as any[];
 
     if (results.length === 0) {
         return {
@@ -38,198 +66,44 @@ export async function handleGetSymbolDefinition(args: any) {
         };
     }
 
-    // If multiple matches without filePath specified and they're different implementations (not re-exports)
-    const implementations = results.filter((r: any) => r.kind !== 'ExportSpecifier');
-    if (implementations.length > 1 && !filePath) {
-        const matches = implementations.map(r => ({
-            file: path.relative(repoPath, r.file_path),
-            name: r.name,
-            kind: r.kind,
-            line: r.start_line
-        }));
-        return {
-            content: [{
-                type: 'text',
-                text: `Multiple implementations found. Please specify filePath:\n${JSON.stringify(matches, null, 2)}`
-            }],
-        };
-    }
-
     const result = results[0];
 
-    // Read source file and extract the symbol's source code
-    const sourceCode = fs.readFileSync(result.file_path, 'utf8');
-    const lines = sourceCode.split('\n');
-
-    // Extract lines from start_line to end_line (1-indexed)
-    const symbolSource = lines.slice(result.start_line - 1, result.end_line).join('\n');
-
-    return {
-        content: [{
-            type: 'text',
-            text: JSON.stringify({
-                name: result.name,
-                kind: result.kind,
-                file: path.relative(repoPath, result.file_path),
-                startLine: result.start_line,
-                endLine: result.end_line,
-                doc: result.doc || undefined,
-                classification: result.classification,
-                capabilities: JSON.parse(result.capabilities || '[]'),
-                source: symbolSource
-            }, null, 2)
-        }],
-    };
-}
-
-export async function handleGetSymbolsBatch(args: any) {
-    const symbols = (args?.symbols as any[]) || [];
-
-    if (symbols.length === 0) {
-        return {
-            content: [{ type: 'text', text: 'Error: No symbols specified' }],
-            isError: true,
-        };
-    }
-
-    // Use the first symbol with a filePath to infer repoPath if not provided
-    const hintFile = symbols.find(s => s.filePath)?.filePath;
-    const { repoPath } = resolveToolArgs({ repoPath: args.repoPath, filePath: hintFile });
-
-    await ensureCacheUpToDate(repoPath);
-    const db = getDB(repoPath);
-
-    const results: any[] = [];
-    const notFound: string[] = [];
-
-    for (const sym of symbols) {
-        const symbolName = String(sym.symbolName);
-        // Resolve per-symbol filePath relative to the determined repoPath
-        const resolvedFilePath = sym.filePath ? path.resolve(repoPath, sym.filePath) : undefined;
-
-        // Find the symbol - order by kind to prefer actual implementations over re-exports
-        let query = `
-            SELECT e.name, e.kind, e.start_line, e.end_line, e.signature, e.doc, f.path as file_path, e.classification, e.capabilities
-            FROM exports e
-            JOIN files f ON e.file_path = f.path
-            WHERE e.name = ?
-        `;
-        const params: any[] = [symbolName];
-
-        if (resolvedFilePath) {
-            query += ' AND f.path = ?';
-            params.push(resolvedFilePath);
-        }
-        query += ' ORDER BY CASE WHEN e.kind = \'ExportSpecifier\' THEN 1 ELSE 0 END, (e.end_line - e.start_line) DESC LIMIT 1';
-
-        const result = db.prepare(query).get(...params) as any;
-
-        if (!result) {
-            notFound.push(resolvedFilePath ? `${symbolName} in ${resolvedFilePath}` : symbolName);
-            continue;
-        }
-
-        // Read source file and extract the symbol's source code
-        const sourceCode = fs.readFileSync(result.file_path, 'utf8');
-        const lines = sourceCode.split('\n');
-
-        // Extract lines from start_line to end_line (1-indexed)
-        const symbolSource = lines.slice(result.start_line - 1, result.end_line).join('\n');
-
-        results.push({
-            name: result.name,
-            kind: result.kind,
-            file: path.relative(repoPath, result.file_path),
-            startLine: result.start_line,
-            endLine: result.end_line,
-            doc: result.doc || undefined,
-            classification: result.classification,
-            capabilities: JSON.parse(result.capabilities || '[]'),
-            source: symbolSource
-        });
-    }
-
-    const response: any = {
-        symbols: results,
-        notFound: notFound.length > 0 ? notFound : undefined
-    };
-
-    return {
-        content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-    };
-}
-
-export async function handleGetSymbolContext(args: any) {
-    const { repoPath, filePath } = resolveToolArgs(args);
-    const symbolName = String(args?.symbolName);
-    const includeUsages = args?.includeUsages !== false; // default true
-    const maxUsageExamples = args?.maxUsageExamples ? Number(args.maxUsageExamples) : 3;
-
-    await ensureCacheUpToDate(repoPath);
-    const db = getDB(repoPath);
-
-    // 1. Get the symbol definition (same as get_symbol_definition)
-    let query = `
-        SELECT e.name, e.kind, e.start_line, e.end_line, e.signature, e.doc, f.path as file_path, e.classification, e.capabilities
-        FROM exports e
-        JOIN files f ON e.file_path = f.path
-        WHERE e.name = ?
-    `;
-    const params: any[] = [symbolName];
-
-    if (filePath) {
-        query += ' AND f.path = ?';
-        params.push(filePath);
-    }
-    query += ' ORDER BY CASE WHEN e.kind = \'ExportSpecifier\' THEN 1 ELSE 0 END, (e.end_line - e.start_line) DESC LIMIT 10';
-
-    const results = db.prepare(query).all(...params) as any[];
-
-    if (results.length === 0) {
-        return {
-            content: [{
-                type: 'text',
-                text: `Symbol "${symbolName}" not found in the codebase.`
-            }],
-        };
-    }
-
-    // If multiple matches without filePath specified
-    const implementations = results.filter((r: any) => r.kind !== 'ExportSpecifier');
-    if (implementations.length > 1 && !filePath) {
-        const matches = implementations.map(r => ({
-            file: path.relative(repoPath, r.file_path),
-            name: r.name,
-            kind: r.kind,
-            line: r.start_line
-        }));
-        return {
-            content: [{
-                type: 'text',
-                text: `Multiple implementations found. Please specify filePath:\n${JSON.stringify(matches, null, 2)}`
-            }],
-        };
-    }
-
-    const result = results[0];
-
-    // Read source file and extract the symbol's source code
+    // Read source file
     const sourceCode = fs.readFileSync(result.file_path, 'utf8');
     const lines = sourceCode.split('\n');
     const symbolSource = lines.slice(result.start_line - 1, result.end_line).join('\n');
 
-    const contextData: any = {
-        definition: {
-            name: result.name,
-            kind: result.kind,
-            file: path.relative(repoPath, result.file_path),
-            startLine: result.start_line,
-            endLine: result.end_line,
-            doc: result.doc || undefined,
-            classification: result.classification,
-            capabilities: JSON.parse(result.capabilities || '[]'),
-            source: symbolSource
-        }
+    // Construct Definition Data
+    // Use Hierarchical Name if applicable
+    const displayName = result.parent_name
+        ? `${result.parent_name}.${result.name}`
+        : result.name;
+
+    const definitionData = {
+        name: displayName,
+        kind: result.kind,
+        file: path.relative(repoPath, result.file_path),
+        startLine: result.start_line,
+        endLine: result.end_line,
+        doc: result.doc || undefined,
+        classification: result.classification,
+        capabilities: JSON.parse(result.capabilities || '[]'),
+        parent: result.parent_name ? {
+            name: result.parent_name,
+            kind: result.parent_kind
+        } : undefined,
+        source: symbolSource
+    };
+
+    if (context === 'definition') {
+        return {
+            content: [{ type: 'text', text: JSON.stringify(definitionData, null, 2) }]
+        };
+    }
+
+    // Context = full
+    const fullData: any = {
+        definition: definitionData
     };
 
     // 2. Get direct dependencies (what this symbol imports)
@@ -239,7 +113,7 @@ export async function handleGetSymbolContext(args: any) {
         WHERE file_path = ?
     `).all(result.file_path) as any[];
 
-    contextData.dependencies = dependencies.map((imp: any) => ({
+    fullData.dependencies = dependencies.map((imp: any) => ({
         module: imp.module,
         symbols: imp.symbols,
         resolvedPath: imp.resolved_path || null,
@@ -248,57 +122,113 @@ export async function handleGetSymbolContext(args: any) {
     }));
 
     // 3. Get usage examples (who imports this symbol)
-    if (includeUsages) {
-        const dependents = db.prepare(`
-            SELECT i.file_path, i.imported_symbols
-            FROM imports i
-            WHERE i.resolved_path = ?
-            AND (i.imported_symbols LIKE ? OR i.imported_symbols = '' OR i.imported_symbols = '*')
-            LIMIT ?
-        `).all(result.file_path, `%${symbolName}%`, maxUsageExamples) as any[];
+    // Find all files that re-export this file (proxies/barrels) recursively
+    const proxies = new Set<string>();
+    proxies.add(result.file_path);
 
-        const usageExamples = [];
-        for (const dep of dependents) {
-            try {
-                const depSourceCode = fs.readFileSync(dep.file_path, 'utf8');
-                const depLines = depSourceCode.split('\n');
+    let currentLevel = [result.file_path];
+    while (currentLevel.length > 0) {
+        const nextLevel: string[] = [];
+        for (const p of currentLevel) {
+            const proxyResults = db.prepare(`
+                SELECT i.file_path
+                FROM imports i
+                JOIN exports e ON i.file_path = e.file_path
+                WHERE i.resolved_path = ?
+                AND (e.kind = 'ExportAllDeclaration' OR e.kind = 'ExportMapping')
+            `).all(p) as any[];
 
-                // Find lines that reference the symbol (simple heuristic)
-                const usageLines: { line: number; code: string }[] = [];
-                for (let i = 0; i < depLines.length; i++) {
-                    if (depLines[i].includes(symbolName)) {
-                        // Get 2 lines of context (before and after)
-                        const contextStart = Math.max(0, i - 1);
-                        const contextEnd = Math.min(depLines.length, i + 2);
-                        const contextLines = depLines.slice(contextStart, contextEnd);
-
-                        usageLines.push({
-                            line: i + 1,
-                            code: contextLines.join('\n')
-                        });
-
-                        // Only take first usage from each file to save space
-                        break;
-                    }
+            for (const r of proxyResults) {
+                if (!proxies.has(r.file_path)) {
+                    proxies.add(r.file_path);
+                    nextLevel.push(r.file_path);
                 }
-
-                if (usageLines.length > 0) {
-                    usageExamples.push({
-                        file: path.relative(repoPath, dep.file_path),
-                        importedSymbols: dep.imported_symbols,
-                        usage: usageLines[0]
-                    });
-                }
-            } catch (err) {
-                // File might not exist or be readable, skip
-                continue;
             }
         }
-
-        contextData.usageExamples = usageExamples;
+        currentLevel = nextLevel;
     }
 
+    const proxyList = Array.from(proxies);
+    const placeholders = proxyList.map(() => '?').join(',');
+
+    // A) Get Verified Dependents (Strict Graph)
+    const verifiedDependents = db.prepare(`
+        SELECT i.file_path, i.imported_symbols, f.classification, f.summary
+        FROM imports i
+        JOIN files f ON i.file_path = f.path
+        WHERE i.resolved_path IN (${placeholders})
+        AND (i.imported_symbols LIKE ? OR i.imported_symbols = '' OR i.imported_symbols = '*')
+        LIMIT 10
+    `).all(...proxyList, `%${symbolName}%`) as any[];
+
+    const verifiedUsages = [];
+    const processedPaths = new Set<string>();
+
+    for (const dep of verifiedDependents) {
+        if (dep.file_path === result.file_path) continue;
+        processedPaths.add(dep.file_path);
+
+        try {
+            const depSourceCode = fs.readFileSync(dep.file_path, 'utf8');
+            const depLines = depSourceCode.split('\n');
+
+            for (let i = 0; i < depLines.length; i++) {
+                if (depLines[i].includes(symbolName)) {
+                    const contextStart = Math.max(0, i - 1);
+                    const contextEnd = Math.min(depLines.length, i + 2);
+                    verifiedUsages.push({
+                        file: path.relative(repoPath, dep.file_path),
+                        classification: dep.classification,
+                        importedSymbols: dep.imported_symbols,
+                        usage: {
+                            line: i + 1,
+                            code: depLines.slice(contextStart, contextEnd).join('\n')
+                        }
+                    });
+                    break;
+                }
+            }
+        } catch (err) { }
+    }
+
+    // B) Get Fuzzy Mentions (Smart Grep fallback)
+    // Only search if we want "full" context and haven't hit the limit
+    let looseMentions: any[] = [];
+    try {
+        const ftsResults = db.prepare(`
+            SELECT file_path, snippet(content_fts, 1, '>>', '<<', '...', 10) as highlight
+            FROM content_fts
+            WHERE content_fts MATCH ?
+            LIMIT 15
+        `).all(symbolName) as any[];
+
+        looseMentions = ftsResults
+            .filter(r => !processedPaths.has(r.file_path) && r.file_path !== result.file_path)
+            .map(r => {
+                const fileMeta = db.prepare('SELECT classification FROM files WHERE path = ?').get(r.file_path) as any;
+                return {
+                    file: path.relative(repoPath, r.file_path),
+                    classification: fileMeta?.classification || 'Unknown',
+                    reason: 'Text mention (no explicit import)',
+                    snippet: r.highlight
+                };
+            });
+    } catch (e) {
+        // FTS might fail if symbols have special chars, ignore for now
+    }
+
+    fullData.usageStats = {
+        totalVerified: (db.prepare(`
+            SELECT COUNT(*) as count FROM imports 
+            WHERE resolved_path IN (${placeholders})
+            AND (imported_symbols LIKE ? OR imported_symbols = '' OR imported_symbols = '*')
+        `).get(...proxyList, `%${symbolName}%`) as any).count
+    };
+
+    fullData.verifiedUsages = verifiedUsages;
+    fullData.looseMentions = looseMentions;
+
     return {
-        content: [{ type: 'text', text: JSON.stringify(contextData, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(fullData, null, 2) }],
     };
 }

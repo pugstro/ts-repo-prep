@@ -49,133 +49,64 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    name: 'repointel_search_symbols',
-    description: 'Search for symbols (functions, classes) globally by name. Best for jumping to a known component (e.g. "AuthController") without traversing the tree. CALL repointel_setup_repository FIRST for best accuracy.',
+    name: 'repointel_search',
+    description: 'Unified search for symbols or semantic concepts. \n' +
+      'Use "symbol" mode to find a specific class, function, or variable by name (fuzzy match). \n' +
+      'Use "concept" mode to find files by purpose or logic (semantic search on file summaries).',
     inputSchema: {
       type: 'object' as const,
       properties: {
         repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        query: { type: 'string', description: 'Name of the symbol to search for (fuzzy match)' },
+        query: { type: 'string', description: 'Search term or natural language intent' },
+        mode: { type: 'string', enum: ['symbol', 'concept'], description: 'Search mode. Default: "symbol"' }
       },
       required: ['repoPath', 'query'],
     },
   },
   {
-    name: 'repointel_get_file_dependencies',
-    description: 'Get a list of files that the target file imports.',
+    name: 'repointel_read_symbol',
+    description: 'Retrieve code for a specific symbol. \n' +
+      'Use context="definition" (default) to get just the source code. \n' +
+      'Use context="full" to get source code + dependency usage examples + internal dependencies.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        filePath: { type: 'string', description: 'Absolute path to the file' },
-      },
-      required: ['repoPath', 'filePath'],
-    },
-  },
-  {
-    name: 'repointel_get_file_dependents',
-    description: 'Get a list of files that import the target file.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        filePath: { type: 'string', description: 'Absolute path to the file' },
-      },
-      required: ['repoPath', 'filePath'],
-    },
-  },
-  {
-    name: 'repointel_get_symbol_definition',
-    description: 'Get the full source code implementation of a specific exported symbol. ' +
-      'Use this when you need to understand how a function, class, or constant is implemented.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        symbolName: { type: 'string', description: 'Name of the exported symbol to retrieve' },
-        filePath: { type: 'string', description: 'Optional: specific file path if symbol name is ambiguous' }
-      },
-      required: ['repoPath', 'symbolName'],
-    },
-  },
-  {
-    name: 'repointel_get_infrastructure_metadata',
-    description: 'Query infrastructure and configuration metadata (from Dockerfiles, YAML, or .env files). ' +
-      'Use this to see base images, ports, environment variables, or service definitions.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        kind: { type: 'string', enum: ['Service', 'Image', 'Port', 'Env'], description: 'Filter by metadata kind' },
-      },
-      required: ['repoPath'],
-    },
-  },
-  {
-    name: 'repointel_search_by_capability',
-    description: 'Find symbols that have specific high-level capabilities (side-effects). ' +
-      'Valid capabilities: Network, Database, File System, Browser Storage.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        capability: { type: 'string', description: 'Capability to search for (e.g. "Network", "Database")' },
-      },
-      required: ['repoPath', 'capability'],
-    },
-  },
-  {
-    name: 'repointel_get_symbols_batch',
-    description: 'Get full source code for multiple symbols in one call. ' +
-      'Much more efficient than making repeated repointel_get_symbol_definition calls when you need to retrieve several related symbols. ' +
-      'Saves round-trips and context window space.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        symbols: {
-          type: 'array',
-          description: 'Array of symbols to retrieve',
-          items: {
-            type: 'object',
-            properties: {
-              symbolName: { type: 'string', description: 'Name of the exported symbol' },
-              filePath: { type: 'string', description: 'Optional: specific file path if symbol name is ambiguous' }
-            },
-            required: ['symbolName']
-          }
-        }
-      },
-      required: ['repoPath', 'symbols'],
-    },
-  },
-  {
-    name: 'repointel_get_symbol_context',
-    description: 'Get comprehensive context for a symbol: its definition, usage examples from files that import it, and its direct dependencies. ' +
-      'This is much more efficient than calling repointel_get_symbol_definition + repointel_get_file_dependents + parsing usage sites separately. ' +
-      'Use this when you need to understand how a symbol is used in practice.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        symbolName: { type: 'string', description: 'Name of the exported symbol' },
+        symbolName: { type: 'string', description: 'Name of the symbol to retrieve' },
         filePath: { type: 'string', description: 'Optional: specific file path if symbol name is ambiguous' },
-        includeUsages: { type: 'boolean', description: 'Include usage examples from dependent files (default: true)' },
-        maxUsageExamples: { type: 'number', description: 'Maximum number of usage examples to return (default: 3)' }
+        context: { type: 'string', enum: ['definition', 'full'], description: 'Retrieval depth. Default: "definition"' }
       },
       required: ['repoPath', 'symbolName'],
     },
   },
   {
-    name: 'repointel_refresh_index',
-    description: 'Manually trigger an incremental re-index of the repository. ' +
-      'Use this after making significant file changes to ensure the AI context is up-to-date.',
+    name: 'repointel_inspect_file_deps',
+    description: 'Inspect dependencies or dependents of a specific file. \n' +
+      'Use direction="imports" to see what this file uses. \n' +
+      'Use direction="imported_by" to see what other files use this file.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         repoPath: { type: 'string', description: 'Absolute path to the repository' },
+        filePath: { type: 'string', description: 'Absolute path to the file' },
+        direction: { type: 'string', enum: ['imports', 'imported_by'], description: 'Analysis direction' }
       },
-      required: ['repoPath'],
+      required: ['repoPath', 'filePath', 'direction'],
+    },
+  },
+  {
+    name: 'repointel_search_config',
+    description: 'Search for configuration values or infrastructure metadata. \n' +
+      'Provide "key" to find a specific env var or config value across files. \n' +
+      'Provide "kind" to dump all metadata of a specific type (e.g. all Ports).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        repoPath: { type: 'string', description: 'Absolute path to the repository' },
+        key: { type: 'string', description: 'Specific config key to find (e.g. "API_KEY")' },
+        kind: { type: 'string', enum: ['Service', 'Image', 'Port', 'Env'], description: 'Metadata kind to dump' }
+      },
+      required: ['repoPath'], // technically neither is required by schema validation but helpful to have one? Actually let's make repoPath required. The handler should check that at least one of key/kind is present.
     },
   },
   {
@@ -190,6 +121,18 @@ export const TOOL_SCHEMAS = [
         depth: { type: 'number', description: 'How many dependency hops to trace (default: 3)' }
       },
       required: ['repoPath', 'symbolName'],
+    },
+  },
+  {
+    name: 'repointel_refresh_index',
+    description: 'Manually trigger an incremental re-index of the repository. ' +
+      'Use this after making significant file changes to ensure the AI context is up-to-date.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        repoPath: { type: 'string', description: 'Absolute path to the repository' },
+      },
+      required: ['repoPath'],
     },
   },
 ];

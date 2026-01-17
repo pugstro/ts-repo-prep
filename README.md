@@ -1,133 +1,55 @@
-# mcp-repo-intelligence
+# MCP Repo Intelligence (v2.0)
 
-An AI-powered repository intelligence server that creates a queryable SQLite database of your codebase, optimized for AI-assisted development through the Model Context Protocol (MCP).
+**Zero-Blind-Spot Intelligence for Large TypeScript Repositories.**
 
-## Features
+This MCP server transforms any TypeScript codebase into a queryable knowledge graph. It enables AI agents to instantly find code definitions, understand complex architecture (including barrel files and monorepos), and track symbol usage across the entire stack—from source code to configuration files.
 
-- **Ultra-fast parsing** using SWC (~1,500 files/second)
-- **Bidirectional dependency tracking** (find imports and dependents)
-- **Smart import resolution** (tsconfig path aliases, monorepos, ESM/CJS)
-- **Infrastructure parsing** (Prisma schemas, GraphQL, Docker, YAML)
-- **MCP Server integration** with 13 powerful tools for AI assistants
-- **Incremental caching** (only re-parses changed files)
-- **Capability detection** (network, database, filesystem, browser storage)
-- **Git branch awareness** (maintains separate indexes for different branches)
+## High-Level Capabilities
 
-### Intelligent Setup (v1.2.0)
+* **Instant Code Navigation**: Jump directly to any class, interface, function, **or specific method** without needing to know the file structure.
+* **Smart Grep**: Finds every mention of a symbol, distinguishing between strict code imports (Verified Usages) and loose text references in Config/CI/Docker (Loose Mentions).
+* **Logic & Intent Analysis**: Search for concepts ("where is auth handled?") or specific logic ("publishSubscriptionEvent") with equal precision.
+* **🕸️Monorepo Aware**: Flattens complexity by resolving aliases (`@app/core`) and following re-exports (barrel files) recursively.
 
-Automatically analyzes your repository structure to provide the most efficient context:
+## Tools
 
-- **Smart Classification**: Detects if your repo is Small, Medium, Large, or a Polyglot Monorepo.
-- **System Map**: Generates an architectural map of top-level components (e.g., `Active (TS/JS Source)`, `Detected (Non-TS Backend)`).
-- **Token Optimization**: Prevents AI from wasting tokens on non-code directories (config, assets, other languages) while still providing structural awareness.
+### `repointel_read_symbol`
 
-### MCP Server Mode
+**The "Laser" Tool.** Finds a specific symbol, its definition, and **everywhere it is used**.
 
-Start the MCP server for AI assistant integration:
+* **Input**: `symbolName` (e.g., `CMPubSub`, `publishSubscriptionEvent`, or `CMPubSub.publishSubscriptionEvent`)
+* **Output**:
+  * **Definition**: The exact source code (method/class body).
+  * **Verified Usages**: Files that import and use the symbol (Code dependency graph).
+  * **Loose Mentions**: Text references in non-code files (Infrastructure impact).
 
-```bash
-mcp-repo-intelligence
-```
+### `repointel_search`
 
-Or during development:
+**The "Compass" Tool.** Finds files and symbols based on semantic meaning or fuzzy names.
 
-```bash
-npm run mcp
-```
+* **Input**: `query` (e.g., "Subscription events", "Auth controller")
+* **Output**: List of relevant files with architectural summaries.
 
-## MCP Tools
+### `repointel_inspect_file`
 
-The MCP server exposes 13 tools (all prefixed with `repointel_` for easy discovery):
+**The "Microscope" Tool.** Deeply analyzes a single file.
 
-### Core Tools
+* **Input**: `path`
+* **Output**: Exports, imports, dependencies, and complex logic breakdown.
 
-| Tool                              | Description                                                       |
-| --------------------------------- | ----------------------------------------------------------------- |
-| `repointel_setup_repository`    | **FIRST tool to call** - indexes the repo and returns stats |
-| `repointel_get_project_summary` | Hierarchical project structure with adaptive detail               |
-| `repointel_summarize_file`      | Detailed info about a specific file                               |
-| `repointel_refresh_index`       | Trigger re-indexing after changes                                 |
+### `repointel_setup_repository`
 
-### Search Tools
+**The "Indexer" Tool.** Scans the codebase and builds the SQLite intelligence database.
 
-| Tool                                      | Description                                    |
-| ----------------------------------------- | ---------------------------------------------- |
-| `repointel_search_symbols`              | Fuzzy search for functions, classes, types     |
-| `repointel_search_by_capability`        | Find by side-effects (network, database, etc.) |
-| `repointel_get_infrastructure_metadata` | Query Docker, YAML, env configs                |
+* **Input**: `repoPath`
+* **Action**: Parses thousands of files in seconds to build the knowledge graph.
 
-### Dependency Tools
+## Getting Started
 
-| Tool                                | Description                        |
-| ----------------------------------- | ---------------------------------- |
-| `repointel_get_file_dependencies` | List what a file imports           |
-| `repointel_get_file_dependents`   | Find who imports a file            |
-| `repointel_analyze_change_impact` | Analyze refactoring "blast radius" |
+1. **Install**: `npm install -g mcp-repo-intelligence` (or verify it is running in your MCP client).
+2. **Connect**: Add to your MCP config.
+3. **Use**: Ask your AI to "Index this repository" or "Find where X is defined".
 
-### Symbol Tools
+---
 
-| Tool                                | Description                            |
-| ----------------------------------- | -------------------------------------- |
-| `repointel_get_symbol_definition` | Extract full source code for a symbol  |
-| `repointel_get_symbols_batch`     | Retrieve multiple symbols in one call  |
-| `repointel_get_symbol_context`    | Get definition + usages + dependencies |
-
-## MCP Resources
-
-The server provides 2 read-only resources:
-
-1. **repo://current/dependency-graph** - Full JSON dependency graph
-2. **repo://current/statistics** - Repository stats (file counts, lines of code, etc.)
-
-## Database Schema
-
-Creates a `.repo-prep.db` SQLite database (or `.repo-prep.[branch].db` when in a git repository) with:
-
-- **files** - File metadata, mtime, classification, summary
-- **exports** - Exported symbols with signatures, docs, line numbers, capabilities
-- **imports** - Import statements with resolved paths
-- **configs** - Infrastructure metadata from non-code files
-
-All with strategic indexes for fast queries.
-
-## CLI Usage
-
-```bash
-# Index a repository
-repo-intelligence /path/to/repo
-
-# Export to JSON (optional)
-repo-intelligence /path/to/repo -o export.json
-```
-
-## Performance
-
-Real-world metrics from 1,385 file repository:
-
-- Indexing time: ~900ms
-- Database size: ~2.4MB
-- Exports: 2,227 symbols
-- Imports: 4,162 statements
-- Signature extraction: 99.7% success rate
-- Import resolution: 35.7% (remainder are external node_modules)
-
-## Configuration
-
-The tool automatically discovers:
-
-- `.gitignore` patterns (respects for file scanning)
-- `tsconfig.json` (for path alias resolution)
-- `package.json` (for workspace packages)
-
-## Technologies
-
-- **@swc/core** - Ultra-fast TypeScript/JavaScript parsing
-- **better-sqlite3** - Synchronous SQLite database
-- **ts-morph** - TypeScript compiler API wrapper
-- **@modelcontextprotocol/sdk** - MCP server implementation
-- **fast-glob** - High-performance file globbing
-- **pino** - Structured logging
-
-## License
-
-MIT
+*Powered by SQLite FTS5 & SWC for blistering speed.*

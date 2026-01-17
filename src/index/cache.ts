@@ -3,6 +3,7 @@ import { parseFile } from '../parser/index.js';
 import logger from '../logger.js';
 import plimit from 'p-limit';
 import path from 'path';
+import fs from 'fs';
 import { getDB } from '../db.js';
 import { resolveImportPath, initResolver } from '../resolver/index.js';
 import { parseConfigFile } from '../config-parser.js';
@@ -64,38 +65,41 @@ export async function ensureCacheUpToDate(repoPath: string, concurrency = 5): Pr
 
                 if (isCode) {
                     const result = await parseFile(meta.path);
+                    const content = fs.readFileSync(meta.path, 'utf8');
                     completed++;
                     if (completed % 50 === 0 || completed === total) {
                         logger.info({ completed, total }, 'Parsing progress...');
                     }
-                    return { meta, ...result, kind: 'code' };
+                    return { meta, ...result, content, kind: 'code' };
                 } else {
                     const result = parseConfigFile(meta.path);
+                    const content = fs.readFileSync(meta.path, 'utf8');
                     completed++;
                     if (completed % 50 === 0 || completed === total) {
                         logger.info({ completed, total }, 'Parsing progress...');
                     }
-                    return { meta, ...result, kind: 'config' };
+                    return { meta, ...result, content, kind: 'config' };
                 }
             } catch (err) {
                 completed++;
                 logger.error({ path: meta.path, error: err }, 'Failed to parse file');
-                return { meta, exports: [], imports: [], kind: 'error' };
+                return { meta, exports: [], imports: [], content: '', kind: 'error' };
             }
         }));
 
         const results = await Promise.all(parseTasks);
 
         const insertFile = db.prepare('INSERT OR REPLACE INTO files (path, mtime, last_scanned_at, classification, summary) VALUES (?, ?, ?, ?, ?)');
-        const insertExport = db.prepare('INSERT INTO exports (file_path, name, kind, signature, doc, start_line, end_line, classification, capabilities) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        const insertExport = db.prepare('INSERT INTO exports (file_path, name, kind, signature, doc, start_line, end_line, classification, capabilities, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         const insertImport = db.prepare('INSERT INTO imports (file_path, module_specifier, imported_symbols, resolved_path) VALUES (?, ?, ?, ?)');
         const insertConfig = db.prepare('INSERT INTO configs (file_path, key, value, kind) VALUES (?, ?, ?, ?)');
+        const insertContent = db.prepare('INSERT INTO file_content (file_path, content) VALUES (?, ?)');
 
         const deleteFile = db.prepare('DELETE FROM files WHERE path = ?');
 
         const writeTransaction = db.transaction((items: any[]) => {
             for (const item of items) {
-                const { meta, exports, imports, configs, classification, summary } = item;
+                const { meta, exports, imports, configs, content, classification, summary } = item;
 
                 // Clear old entry to trigger cascade delete of exports/imports/configs
                 deleteFile.run(meta.path);
@@ -106,7 +110,7 @@ export async function ensureCacheUpToDate(repoPath: string, concurrency = 5): Pr
                 // Insert Exports
                 if (exports) {
                     for (const exp of exports) {
-                        insertExport.run(
+                        const result = insertExport.run(
                             meta.path,
                             exp.name,
                             exp.kind,
@@ -115,8 +119,28 @@ export async function ensureCacheUpToDate(repoPath: string, concurrency = 5): Pr
                             exp.line,
                             exp.endLine || exp.line,
                             exp.classification || 'Other',
-                            exp.capabilities || '[]'
+                            exp.capabilities || '[]',
+                            null // parent_id is null for top-level exports
                         );
+
+                        // Insert members if any (Deep Indexing)
+                        if (exp.members && exp.members.length > 0) {
+                            const parentId = result.lastInsertRowid;
+                            for (const member of exp.members) {
+                                insertExport.run(
+                                    meta.path,
+                                    member.name,
+                                    member.kind,
+                                    member.signature,
+                                    member.doc || '',
+                                    member.line,
+                                    member.endLine || member.line,
+                                    member.classification || 'Member',
+                                    member.capabilities || '[]',
+                                    parentId // Link to parent class/interface
+                                );
+                            }
+                        }
                     }
                 }
 
@@ -133,6 +157,11 @@ export async function ensureCacheUpToDate(repoPath: string, concurrency = 5): Pr
                     for (const conf of configs) {
                         insertConfig.run(meta.path, conf.key, conf.value, conf.kind);
                     }
+                }
+
+                // Insert Content
+                if (content !== undefined) {
+                    insertContent.run(meta.path, content);
                 }
             }
         });

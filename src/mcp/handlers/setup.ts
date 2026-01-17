@@ -85,6 +85,32 @@ export async function handleSetupRepository(args: any) {
         }
 
         systemMap.push(`| \`${name}/\` | ${status} | ${type} |`);
+
+        // For Active components, enumerate immediate children (workspaces)
+        if (hasTs && mostlyTs) {
+            const children = db.prepare(`
+                SELECT DISTINCT 
+                    SUBSTR(
+                        SUBSTR(path, LENGTH(? || '/' || ?) + 2),
+                        1,
+                        INSTR(SUBSTR(path, LENGTH(? || '/' || ?) + 2), '/') - 1
+                    ) as child
+                FROM files 
+                WHERE path LIKE ? || '/' || ? || '/%/%'
+                  AND SUBSTR(
+                        SUBSTR(path, LENGTH(? || '/' || ?) + 2),
+                        1,
+                        INSTR(SUBSTR(path, LENGTH(? || '/' || ?) + 2), '/') - 1
+                    ) != ''
+                LIMIT 11
+            `).all(repoPath, name, repoPath, name, repoPath, name, repoPath, name, repoPath, name);
+
+            if (children.length > 0) {
+                const childNames = children.slice(0, 10).map((c: any) => c.child);
+                const more = children.length > 10 ? ` +${children.length - 10} more` : '';
+                systemMap.push(`|   └─ *contains:* ${childNames.join(', ')}${more} | | |`);
+            }
+        }
     });
 
     const hasDockerCompose = db.prepare('SELECT 1 FROM files WHERE path = ?').get(repoPath + '/docker-compose.yml');

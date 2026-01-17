@@ -5,8 +5,10 @@ import { diagnoseResolution } from '../../resolver/index.js';
 import { IMPACT_ANALYSIS_QUERY } from '../../graph-queries.js';
 import path from 'path';
 
-export async function handleGetFileDependencies(args: any) {
+export async function handleInspectFileDeps(args: any) {
     const { repoPath, filePath } = resolveToolArgs(args);
+    const direction = String(args?.direction) as 'imports' | 'imported_by';
+
     if (!filePath) {
         return { content: [{ type: 'text', text: 'Error: filePath is required' }], isError: true };
     }
@@ -14,67 +16,60 @@ export async function handleGetFileDependencies(args: any) {
     await ensureCacheUpToDate(repoPath);
     const db = getDB(repoPath);
 
-    const imports = db.prepare(`
-        SELECT module_specifier as module, imported_symbols as symbols, resolved_path
-        FROM imports
-        WHERE file_path = ?
-    `).all(filePath) as any[];
+    if (direction === 'imports') {
+        const imports = db.prepare(`
+            SELECT module_specifier as module, imported_symbols as symbols, resolved_path
+            FROM imports
+            WHERE file_path = ?
+        `).all(filePath) as any[];
 
-    // Enhance output with resolution status AND diagnostics
-    const enhanced = imports.map(imp => {
-        const base = {
-            module: imp.module,
-            symbols: imp.symbols,
-            resolvedPath: imp.resolved_path || null,
-            relativePath: imp.resolved_path ? path.relative(repoPath, imp.resolved_path) : null,
-            isExternal: !imp.resolved_path
-        };
+        // Enhance output with resolution status AND diagnostics
+        const enhanced = imports.map(imp => {
+            const base = {
+                module: imp.module,
+                symbols: imp.symbols,
+                resolvedPath: imp.resolved_path || null,
+                relativePath: imp.resolved_path ? path.relative(repoPath, imp.resolved_path) : null,
+                isExternal: !imp.resolved_path
+            };
 
-        // Add diagnostic info if resolution failed and it's not obviously an external lib (simple check)
-        if (!imp.resolved_path) {
-            const diagnostic = diagnoseResolution(imp.module, filePath, repoPath);
-            if (!diagnostic.resolved) {
-                return {
-                    ...base,
-                    resolutionError: diagnostic.error,
-                    suggestion: diagnostic.suggestion
-                };
+            // Add diagnostic info if resolution failed and it's not obviously an external lib (simple check)
+            if (!imp.resolved_path) {
+                const diagnostic = diagnoseResolution(imp.module, filePath, repoPath);
+                if (!diagnostic.resolved) {
+                    return {
+                        ...base,
+                        resolutionError: diagnostic.error,
+                        suggestion: diagnostic.suggestion
+                    };
+                }
             }
-        }
-        return base;
-    });
+            return base;
+        });
 
-    return {
-        content: [{ type: 'text', text: JSON.stringify(enhanced, null, 2) }],
-    };
-}
+        return {
+            content: [{ type: 'text', text: JSON.stringify(enhanced, null, 2) }],
+        };
+    } else {
+        // imported_by
+        // Use resolved_path for accurate matching
+        const results = db.prepare(`
+            SELECT i.module_specifier, i.file_path, i.imported_symbols
+            FROM imports i
+            WHERE i.resolved_path = ?
+        `).all(filePath) as any[];
 
-export async function handleGetFileDependents(args: any) {
-    const { repoPath, filePath: targetFilePath } = resolveToolArgs(args);
-    if (!targetFilePath) {
-        return { content: [{ type: 'text', text: 'Error: filePath is required' }], isError: true };
+        const dependents = results.map((r: any) => ({
+            file: r.file_path,
+            relativePath: path.relative(repoPath, r.file_path),
+            importStatement: r.module_specifier,
+            importedSymbols: r.imported_symbols
+        }));
+
+        return {
+            content: [{ type: 'text', text: JSON.stringify(dependents, null, 2) }],
+        };
     }
-
-    await ensureCacheUpToDate(repoPath);
-    const db = getDB(repoPath);
-
-    // Use resolved_path for accurate matching
-    const results = db.prepare(`
-        SELECT i.module_specifier, i.file_path, i.imported_symbols
-        FROM imports i
-        WHERE i.resolved_path = ?
-    `).all(targetFilePath) as any[];
-
-    const dependents = results.map((r: any) => ({
-        file: r.file_path,
-        relativePath: path.relative(repoPath, r.file_path),
-        importStatement: r.module_specifier,
-        importedSymbols: r.imported_symbols
-    }));
-
-    return {
-        content: [{ type: 'text', text: JSON.stringify(dependents, null, 2) }],
-    };
 }
 
 export async function handleAnalyzeChangeImpact(args: any) {
