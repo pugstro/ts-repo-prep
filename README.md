@@ -1,4 +1,4 @@
-# MCP Repo Intelligence (v2.1)
+# MCP Repo Intelligence (v2.2)
 
 **Zero-Blind-Spot Intelligence for Large TypeScript Repositories.**
 
@@ -12,15 +12,23 @@ This MCP server transforms any TypeScript codebase into a queryable knowledge gr
 * **Logic & Intent Analysis**: Search for concepts ("where is auth handled?") or specific logic ("publishSubscriptionEvent") with equal precision.
 * **🕸️Monorepo Aware**: Flattens complexity by resolving aliases (`@app/core`) and following re-exports (barrel files) recursively.
 
+## Philosophy
+
+MCP Repo Intelligence is a **curated intelligence layer** that minimizes token waste by pre-answering repetitive "where" and "what" questions. It **complements** traditional tools (grep, cat) rather than replacing them—providing instant answers to questions that would otherwise require reading multiple files.
+
+**Token Economics**: Finding a symbol location takes ~50 tokens (vs ~10,000 tokens reading 10+ files manually).
+
 ## Tools
 
 ### `repointel_read_symbol`
 
 **The "Laser" Tool.** Finds a specific symbol, its definition, and **everywhere it is used**.
 
-* **Input**: `symbolName` (e.g., `CMPubSub`, `publishSubscriptionEvent`, or `CMPubSub.publishSubscriptionEvent`)
+* **Input**:
+  * `symbolName` (e.g., `CMPubSub`, `publishSubscriptionEvent`, or `CMPubSub.publishSubscriptionEvent`)
+  * `context` (optional): `"definition"` (default, shows first 150 lines) or `"full"` (includes dependencies & usage)
 * **Output**:
-  * **Definition**: The exact source code (method/class body).
+  * **Definition**: The exact source code (truncated to 150 lines for large symbols).
   * **Verified Usages**: Files that import and use the symbol (Code dependency graph).
   * **Loose Mentions**: Text references in non-code files (Infrastructure impact).
 
@@ -30,6 +38,13 @@ This MCP server transforms any TypeScript codebase into a queryable knowledge gr
 
 * **Input**: `query` (e.g., "Subscription events", "Auth controller")
 * **Output**: List of relevant files with architectural summaries.
+
+### `repointel_search_config`
+
+**The "Config Finder" Tool.** Searches for configuration keys across .env, YAML, and docker-compose files.
+
+* **Input**: `key` (e.g., `"DATABASE_URL"`), `limit` (optional, default 50)
+* **Output**: All occurrences with file paths, line numbers, and values.
 
 ### `repointel_summarize_file`
 
@@ -46,12 +61,6 @@ This MCP server transforms any TypeScript codebase into a queryable knowledge gr
 * **Action**: Parses thousands of files in seconds to build the knowledge graph.
 * **Performance**: ~1.9s to fully index 1,850 TypeScript files (Microservices Monorepo).
 
-## Getting Started
-
-1. **Install**: `npm install -g mcp-repo-intelligence` (or verify it is running in your MCP client).
-2. **Connect**: Add to your MCP config.
-3. **Use**: Ask your AI to "Index this repository" or "Find where X is defined".
-
----
+  ---
 
 *Powered by SQLite FTS5 & SWC for blistering speed.*

@@ -1,13 +1,18 @@
 /**
  * MCP tool and resource schema definitions.
+ * 
+ * PHILOSOPHY: These tools are designed as a "pre-flight intelligence layer" for AI agents.
+ * They provide HIGH-SIGNAL, LOW-TOKEN alternatives to raw file reads.
+ * Use these BEFORE committing to heavy file operations to save context window budget.
  */
 
 export const TOOL_SCHEMAS = [
   {
     name: 'repointel_setup_repository',
     description: 'The FIRST tool you should call for any new repository. ' +
-      'It performs initial indexing, verifies the environment, and returns repository statistics ' +
-      'along with a high-level file tree. Use this to "onboard" yourself to a codebase.',
+      'Performs initial indexing and returns architecture overview, detected services, and navigation strategy. ' +
+      'STRATEGY: Call this once per repo to "onboard" yourself. Re-call after major refactors. ' +
+      'TOKEN EFFICIENCY: Returns curated intelligence, not raw file dumps.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -18,10 +23,11 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'repointel_get_project_summary',
-    description: 'Get a hierarchical summary of the project. \n' +
-      'STRATEGY: Adaptive. By default, tries to return the full tree with export signatures. ' +
-      'If the project is too large for the context window, it automatically truncates details (hides signatures) but ALWAYS returns the full file/folder structure. ' +
-      'Use this to get the "Map" of the codebase. CALL setup_repository FIRST if you haven\'t yet.',
+    description: 'Get a hierarchical summary of the project structure. ' +
+      'STRATEGY: Use this to build a mental map of a directory BEFORE diving into files. ' +
+      'Prefer this over "ls" or "find" for understanding codebase layout. ' +
+      'FEATURES: Automatically truncates signatures for large projects while preserving full structure. ' +
+      'NOTE: Call setup_repository FIRST if you haven\'t yet.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -34,7 +40,10 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'repointel_summarize_file',
-    description: 'Get a summary of a specific file. Defaults to showing exported signatures. Use "detailed" for full code/docs.',
+    description: 'Get a token-efficient summary of a specific file. ' +
+      'STRATEGY: Use this BEFORE reading the full file to decide if it\'s relevant. ' +
+      'FEATURES: Shows exported signatures without full implementation code. ' +
+      'Use "detailed" level only when you need the complete content.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -50,9 +59,10 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'repointel_search',
-    description: 'Unified search for symbols or semantic concepts. \n' +
-      'Use "symbol" mode to find a specific class, function, or variable by name (fuzzy match). \n' +
-      'Use "concept" mode to find files by purpose or logic (semantic search on file summaries).',
+    description: 'Unified search for symbols or semantic concepts. ' +
+      'STRATEGY: Use "symbol" mode when you know a name (supports typos with "Did you mean?" suggestions). ' +
+      'Use "concept" mode to find files by PURPOSE (e.g., "authentication logic"). ' +
+      'FEATURES: Fuzzy matching for symbol names. Returns file paths and summaries.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -65,25 +75,28 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'repointel_read_symbol',
-    description: 'Retrieve code for a specific symbol. \n' +
-      'Use context="definition" (default) to get just the source code. \n' +
-      'Use context="full" to get source code + dependency usage examples + internal dependencies.',
+    description: 'Retrieve source code for a specific symbol by name. ' +
+      'STRATEGY: Use when you know the symbol name but not its exact file location. ' +
+      'FEATURES: Automatically resolves re-exported (barrel) symbols to their actual definition. ' +
+      'TRUNCATION: Large symbols are truncated to 150 lines by default with clear instructions for full retrieval. ' +
+      'Use context="full" for dependencies and usage examples (higher token cost).',
     inputSchema: {
       type: 'object' as const,
       properties: {
         repoPath: { type: 'string', description: 'Absolute path to the repository' },
         symbolName: { type: 'string', description: 'Name of the symbol to retrieve' },
         filePath: { type: 'string', description: 'Optional: specific file path if symbol name is ambiguous' },
-        context: { type: 'string', enum: ['definition', 'full'], description: 'Retrieval depth. Default: "definition"' }
+        context: { type: 'string', enum: ['definition', 'full'], description: 'Retrieval depth. Default: "definition" (truncated to 150 lines).' }
       },
       required: ['repoPath', 'symbolName'],
     },
   },
   {
     name: 'repointel_inspect_file_deps',
-    description: 'Inspect dependencies or dependents of a specific file. \n' +
-      'Use direction="imports" to see what this file uses. \n' +
-      'Use direction="imported_by" to see what other files use this file.',
+    description: 'Inspect dependencies or dependents of a specific file. ' +
+      'STRATEGY: Use direction="imports" to see what this file depends on. ' +
+      'Use direction="imported_by" to understand who uses this file (impact analysis). ' +
+      'FEATURES: Returns resolved import paths, not just raw import statements.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -96,22 +109,28 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'repointel_search_config',
-    description: 'Search for configuration values or infrastructure metadata. \n' +
-      'Provide "key" to find a specific env var or config value across files. \n' +
-      'Provide "kind" to dump all metadata of a specific type (e.g. all Ports).',
+    description: 'Search for configuration values across .env, docker-compose, and YAML files. ' +
+      'STRATEGY: Use this to find environment variables, ports, and service definitions. ' +
+      'FEATURES: Supports dot-notation for nested keys (e.g., "services.backend.environment.DATABASE_HOST"). ' +
+      'Searches .env files, docker-compose.yml, and general YAML configs. ' +
+      'TRUNCATION: Results limited to 50 by default; use "limit" to adjust.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         repoPath: { type: 'string', description: 'Absolute path to the repository' },
-        key: { type: 'string', description: 'Specific config key to find (e.g. "API_KEY")' },
-        kind: { type: 'string', enum: ['Service', 'Image', 'Port', 'Env'], description: 'Metadata kind to dump' }
+        key: { type: 'string', description: 'Config key to find. Supports dot-notation for nested keys (e.g., "database.postgres.host")' },
+        kind: { type: 'string', enum: ['Service', 'Image', 'Port', 'Env'], description: 'Metadata kind to dump (alternative to key search)' },
+        limit: { type: 'number', description: 'Max results to return (default: 50)' }
       },
-      required: ['repoPath'], // technically neither is required by schema validation but helpful to have one? Actually let's make repoPath required. The handler should check that at least one of key/kind is present.
+      required: ['repoPath'],
     },
   },
   {
     name: 'repointel_analyze_change_impact',
-    description: 'Analyze what would be affected by changing a symbol. Returns a dependency tree showing direct and transitive dependents. Use this before refactoring to understand the "blast radius" of a change.',
+    description: 'Analyze the "blast radius" of changing a symbol. ' +
+      'STRATEGY: Use BEFORE refactoring to understand what files would be affected. ' +
+      'Returns a dependency tree showing direct and transitive dependents. ' +
+      'FEATURES: Traces through re-exports to find actual usages.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -125,8 +144,9 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'repointel_refresh_index',
-    description: 'Manually trigger an incremental re-index of the repository. ' +
-      'Use this after making significant file changes to ensure the AI context is up-to-date.',
+    description: 'Trigger an incremental re-index of the repository. ' +
+      'STRATEGY: Use after making significant file changes to ensure your intelligence is current. ' +
+      'FEATURES: Only re-indexes files that have changed (mtime-based), making it fast for large repos.',
     inputSchema: {
       type: 'object' as const,
       properties: {

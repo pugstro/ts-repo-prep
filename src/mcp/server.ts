@@ -19,7 +19,7 @@ import { handleToolCall } from './handlers/index.js';
 const server = new Server(
   {
     name: 'mcp-repo-intelligence',
-    version: '1.3.0',
+    version: '2.2.0',
   },
   {
     capabilities: {

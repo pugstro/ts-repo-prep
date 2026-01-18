@@ -1,6 +1,7 @@
 import { ensureCacheUpToDate } from '../../index.js';
 import { getDB } from '../../db.js';
 import { resolveToolArgs } from '../utils.js';
+import { findFuzzyMatches } from '../../utils/fuzzy.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -67,7 +68,7 @@ export async function handleReadSymbol(args: any) {
                 SELECT rowid FROM content_fts WHERE content MATCH ?
             )
             LIMIT 3
-        `).all(symbolName);
+        `).all(`"${symbolName}"`);
 
         if (potentialParents.length > 0) {
             const suggestions = potentialParents.map((p: any) => `\`${p.name}\` (in ${path.relative(repoPath, p.file_path)})`).join(', ');
@@ -81,10 +82,40 @@ export async function handleReadSymbol(args: any) {
             };
         }
 
+        // Try fuzzy matching on all symbols - filter to those starting with first letter to improve relevance
+        const firstLetter = symbolName.charAt(0).toLowerCase();
+        const allSymbols = db.prepare(`
+            SELECT DISTINCT name FROM exports
+            WHERE parent_id IS NULL
+            AND (name LIKE ? OR name LIKE ? OR ABS(LENGTH(name) - LENGTH(?)) <= 5)
+            ORDER BY ABS(LENGTH(name) - LENGTH(?)) ASC
+            LIMIT 1000
+        `).all(firstLetter + '%', '%' + firstLetter + '%', symbolName, symbolName) as Array<{ name: string }>;
+
+        const symbolNames = allSymbols.map(s => s.name);
+        const fuzzyMatches = findFuzzyMatches(symbolName, symbolNames, 50, 3);
+
+        if (fuzzyMatches.length > 0) {
+            const suggestions = fuzzyMatches.map(m => `  • \`${m.match}\` (${m.score}% match)`).join('\n');
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Error: Symbol "${symbolName}" not found in the index.\n\n` +
+                        `Suggestions:\n${suggestions}\n\n` +
+                        `Next steps:\n` +
+                        `  • Search semantically: repointel_search({ query: "${symbolName}" })\n` +
+                        `  • Verify repository is indexed: repointel_setup_repository({ repoPath: "${repoPath}" })`
+                }],
+            };
+        }
+
         return {
             content: [{
                 type: 'text',
-                text: `Symbol "${symbolName}" not found in the codebase.`
+                text: `Error: Symbol "${symbolName}" not found in the index.\n\n` +
+                    `Next steps:\n` +
+                    `  • Search semantically: repointel_search({ query: "${symbolName}" })\n` +
+                    `  • Verify repository is indexed: repointel_setup_repository({ repoPath: "${repoPath}" })`
             }],
         };
     }
@@ -129,11 +160,17 @@ export async function handleReadSymbol(args: any) {
     if (context === 'definition' && sourceLineCount > MAX_LINES_DEFINITION) {
         // For large symbols, show first MAX_LINES with continuation message
         const previewLines = lines.slice(result.start_line - 1, result.start_line - 1 + MAX_LINES_DEFINITION);
+        const relPath = path.relative(repoPath, result.file_path);
         symbolSource = previewLines.join('\n') +
-            `\n\n... [Truncated ${sourceLineCount - MAX_LINES_DEFINITION} more lines] ...\n` +
-            `\nℹ️  Symbol has ${sourceLineCount} total lines. To see the full implementation:\n` +
-            `   • Use Read tool: Read({ file_path: "${result.file_path}", offset: ${result.start_line}, limit: ${sourceLineCount} })\n` +
-            `   • Or use context="full" to see with dependencies and usage examples`;
+            `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `⚠️  Large Symbol Truncated (${MAX_LINES_DEFINITION} of ${sourceLineCount} lines shown)\n\n` +
+            `📄 Full Implementation:\n` +
+            `   File: ${relPath}\n` +
+            `   Lines: ${result.start_line}-${result.end_line} (${sourceLineCount} total)\n\n` +
+            `💡 To view the complete code:\n` +
+            `   • Use file viewer: view_file({ path: "${relPath}", startLine: ${result.start_line}, endLine: ${result.end_line} })\n` +
+            `   • Use full context: repointel_read_symbol({ symbolName: "${symbolName}", context: "full" })\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
         truncated = true;
     } else {
         // Normal case: include full source
